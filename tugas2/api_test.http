@@ -1,0 +1,220 @@
+### Variables
+@baseUrl = http://localhost:3000
+@apiPrefix = /api/v1/students
+@contentType = application/json
+
+### ========== Health & Root ==========
+
+### 1. Root - Hello World
+GET {{baseUrl}}/
+
+### 2. Health Check
+GET {{baseUrl}}/api/v1/health
+
+### ========== CREATE (POST) ==========
+
+### 3. Create Student - Success
+POST {{baseUrl}}{{apiPrefix}}
+Content-Type: {{contentType}}
+
+{
+  "username": "habib",
+  "email": "habib@example.com",
+  "password": "password123"
+}
+
+### 4. Create Student - Validation Error (username empty)
+POST {{baseUrl}}{{apiPrefix}}
+Content-Type: {{contentType}}
+
+{
+  "username": "",
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### 5. Create Student - Validation Error (invalid email)
+POST {{baseUrl}}{{apiPrefix}}
+Content-Type: {{contentType}}
+
+{
+  "username": "budi",
+  "email": "invalid-email",
+  "password": "password123"
+}
+
+### 6. Create Student - Validation Error (password too short)
+POST {{baseUrl}}{{apiPrefix}}
+Content-Type: {{contentType}}
+
+{
+  "username": "andi",
+  "email": "andi@example.com",
+  "password": "123"
+}
+
+### 7. Create Student - Duplicate Username
+POST {{baseUrl}}{{apiPrefix}}
+Content-Type: {{contentType}}
+
+{
+  "username": "habib",
+  "email": "duplicate@example.com",
+  "password": "password123"
+}
+
+### 8. Create Student - Wrong Content-Type
+POST {{baseUrl}}{{apiPrefix}}
+Content-Type: text/plain
+
+{
+  "username": "test",
+  "email": "test@example.com",
+  "password": "password123"
+}
+
+### ========== READ (GET) ==========
+
+### 9. List All Students
+GET {{baseUrl}}{{apiPrefix}}/
+
+### 10. List Students with Pagination (page=1, limit=5)
+GET {{baseUrl}}{{apiPrefix}}/?page=1&limit=5
+
+### 11. List Students with Search
+GET {{baseUrl}}{{apiPrefix}}/?search=habib
+
+### 12. List Students Filtered by is_active=true
+GET {{baseUrl}}{{apiPrefix}}/?is_active=true
+
+### 13. List Students Filtered by is_active=false
+GET {{baseUrl}}{{apiPrefix}}/?is_active=false
+
+### 14. List Students Sorted by username DESC
+GET {{baseUrl}}{{apiPrefix}}/?sort=username&order=desc
+
+### 15. List Students Sorted by email ASC
+GET {{baseUrl}}{{apiPrefix}}/?sort=email&order=asc
+
+### 16. List Students with Invalid Sort (defaults to id)
+GET {{baseUrl}}{{apiPrefix}}/?sort=invalid_field
+
+### 17. Get Student by ID - Success
+GET {{baseUrl}}{{apiPrefix}}/1
+
+### 18. Get Student by ID - Not Found
+GET {{baseUrl}}{{apiPrefix}}/999
+
+### 19. Get Student by ID - Invalid ID
+GET {{baseUrl}}{{apiPrefix}}/abc
+
+### ========== UPDATE (PUT) ==========
+
+### 20. Replace Student - Success
+PUT {{baseUrl}}{{apiPrefix}}/1
+Content-Type: {{contentType}}
+
+{
+  "username": "habib_updated",
+  "email": "habib_new@example.com",
+  "is_active": true
+}
+
+### 21. Replace Student - Validation Error (username empty)
+PUT {{baseUrl}}{{apiPrefix}}/1
+Content-Type: {{contentType}}
+
+{
+  "username": "",
+  "email": "test@example.com",
+  "is_active": true
+}
+
+### 22. Replace Student - Validation Error (invalid email)
+PUT {{baseUrl}}{{apiPrefix}}/1
+Content-Type: {{contentType}}
+
+{
+  "username": "testuser",
+  "email": "no-at-sign",
+  "is_active": true
+}
+
+### 23. Replace Student - Not Found
+PUT {{baseUrl}}{{apiPrefix}}/999
+Content-Type: {{contentType}}
+
+{
+  "username": "ghost",
+  "email": "ghost@example.com",
+  "is_active": false
+}
+
+### ========== UPDATE (PATCH) ==========
+
+### 24. Patch Student - Update Username Only
+PATCH {{baseUrl}}{{apiPrefix}}/1
+Content-Type: {{contentType}}
+
+{
+  "username": "habib_patched"
+}
+
+### 25. Patch Student - Update Email Only
+PATCH {{baseUrl}}{{apiPrefix}}/1
+Content-Type: {{contentType}}
+
+{
+  "email": "patched@example.com"
+}
+
+### 26. Patch Student - Deactivate
+PATCH {{baseUrl}}{{apiPrefix}}/1
+Content-Type: {{contentType}}
+
+{
+  "is_active": false
+}
+
+### 27. Patch Student - Multiple Fields
+PATCH {{baseUrl}}{{apiPrefix}}/1
+Content-Type: {{contentType}}
+
+{
+  "username": "multi_field",
+  "email": "multi@example.com",
+  "is_active": true
+}
+
+### 28. Patch Student - Empty Body (no fields)
+PATCH {{baseUrl}}{{apiPrefix}}/1
+Content-Type: {{contentType}}
+
+{}
+
+### 29. Patch Student - Not Found
+PATCH {{baseUrl}}{{apiPrefix}}/999
+Content-Type: {{contentType}}
+
+{
+  "username": "ghost"
+}
+
+### ========== DELETE ==========
+
+### 30. Delete Student - Success
+DELETE {{baseUrl}}{{apiPrefix}}/1
+
+### 31. Delete Student - Not Found
+DELETE {{baseUrl}}{{apiPrefix}}/999
+
+### 32. Delete Student - Invalid ID
+DELETE {{baseUrl}}{{apiPrefix}}/abc
+
+### ========== 404 Fallback ==========
+
+### 33. Undefined Endpoint - 404
+GET {{baseUrl}}/api/v1/unknown
+
+### 34. Random Path - 404
+GET {{baseUrl}}/random/path/here

@@ -1,0 +1,196 @@
+{
+  "info": {
+    "name": "Tugas Pertemuan 2 - Users API",
+    "description": "Collection converted from curl exercises targeting the Fiber CRUD endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "apiPrefix",
+      "value": "/api/v1/users",
+      "type": "string"
+    },
+    {
+      "key": "contentType",
+      "value": "application/json",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Create User - johndoe (Success)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"johndoe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"rahasia123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""]
+        }
+      }
+    },
+    {
+      "name": "1a. Create User - kedua (tambahan)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"andini\",\n  \"email\": \"andini@example.com\",\n  \"password\": \"rahasia123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""]
+        }
+      }
+    },
+    {
+      "name": "1b. Create User - ketiga (tambahan)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"budi_s\",\n  \"email\": \"budi@example.com\",\n  \"password\": \"rahasia123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""]
+        }
+      }
+    },
+    {
+      "name": "2. Pagination & Sorting (page=1, limit=2, sort=username, order=desc)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}?page=1&limit=2&sort=username&order=desc",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "2" },
+            { "key": "sort", "value": "username" },
+            { "key": "order", "value": "desc" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Search & Filter (search=an, is_active=true)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}?search=an&is_active=true",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""],
+          "query": [
+            { "key": "search", "value": "an" },
+            { "key": "is_active", "value": "true" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. PUT - Replace User 1 (Success)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"john_baru\",\n  \"email\": \"jb@example.com\",\n  \"is_active\": false\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/1",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "5. PUT - Tanpa email (Validasi Gagal)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"john_baru\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/1",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "6. PATCH - Update is_active saja",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"is_active\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/1",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "7. POST - Tanpa Content-Type (415)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"username\":\"x\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""]
+        }
+      }
+    },
+    {
+      "name": "8. DELETE - User id=2",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/2",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", "2"]
+        }
+      }
+    }
+  ]
+}
