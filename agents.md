@@ -1,0 +1,7 @@
+## 2026-08-26
+- Created `tugas2/api_test.http` containing 34 VS Code REST Client test requests covering health check, full CRUD (POST, GET list, GET by ID, PUT, PATCH, DELETE), validation errors, pagination, search, filter, sort, and 404 fallback for the Fiber Students API.
+- Created `tugas2/Praktikum_Pertemuan_2.postman_collection.json` — Postman v2.1 collection mirroring the `.http` file, grouped into 7 folders with shared variables (`baseUrl`, `apiPrefix`, `contentType`).
+- Created `tugas2/Tugas_Pertemuan_2.postman_collection.json` — Postman collection for the 8 curl exercises from the assignment (POST johndoe + 2 extras, pagination/sort, search/filter, PUT replace, PUT without email, PATCH is_active, POST without Content-Type, DELETE id=2).
+- Created `tugas2/Laporan_Pengujian_API.md` — Indonesian test report with 10 scenarios; each scenario includes request body, handler code snippet, screenshot placeholder emphasizing HTTP status, and explanation; plus summary table and conclusion ready to copy-paste into Google Docs.
+- Created `tugas2/README.md` — complete Indonesian API documentation covering info umum, konvensi response, schema data, middleware, all 8 endpoints (Hello, Health, CRUD), HTTP status codes, Postman usage guide, and project structure.
+- Replaced `tugas2/README.md` with a concise version — single-table endpoint list, brief response convention, then per-endpoint blocks (params + example request + example response) without the long schema/middleware/Prasyarat sections.
