@@ -10,12 +10,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-var users []model.Student
+var students []model.Student
 var nextID = 1
 
-func findUserIndex(id int) int {
-	for i := range users {
-		if users[i].ID == id {
+func findStudentIndex(id int) int {
+	for i := range students {
+		if students[i].ID == id {
 			return i
 		}
 	}
@@ -36,22 +36,18 @@ func paramID(c *fiber.Ctx) (int, bool) {
 	return id, true
 }
 
-type UserHandler struct {
-	repo repository.UserRepository
+type StudentHandler struct {
+	repo repository.StudentRepository
 }
 
-// Perhatikan tipe parameternya: INTERFACE, bukan struct konkret.
-// Handler tidak tahu dan tidak perlu tahu datanya disimpan di mana.
-func NewUserHandler(repo repository.UserRepository) *UserHandler {
-	return &UserHandler{repo: repo}
+func NewStudentHandler(repo repository.StudentRepository) *StudentHandler {
+	return &StudentHandler{repo: repo}
 }
 
-// terjemahkanError memetakan error milik repository menjadi status HTTP.
-// Satu tempat untuk seluruh handler, agar pemetaannya tidak tercecer.
 func terjemahkanError(c *fiber.Ctx, err error, pesanUmum string) error {
 	switch {
 	case errors.Is(err, repository.ErrNotFound):
-		return fail(c, fiber.StatusNotFound, "user tidak ditemukan")
+		return fail(c, fiber.StatusNotFound, "student tidak ditemukan")
 	case errors.Is(err, repository.ErrDuplicate):
 		return fail(c, fiber.StatusConflict, "username sudah dipakai")
 	default:
@@ -59,36 +55,36 @@ func terjemahkanError(c *fiber.Ctx, err error, pesanUmum string) error {
 	}
 }
 
-func (h *UserHandler) List(c *fiber.Ctx) error {
+func (h *StudentHandler) List(c *fiber.Ctx) error {
 	ctx, cancel := reqCtx(c)
 	defer cancel()
 	q := parseListQuery(c)
-	users, total, err := h.repo.FindAll(ctx, q)
+	students, total, err := h.repo.FindAll(ctx, q)
 	if err != nil {
-		return fail(c, fiber.StatusInternalServerError, "gagal mengambil data user")
+		return fail(c, fiber.StatusInternalServerError, "gagal mengambil data student")
 	}
 	totalPages := 0
 	if q.Limit > 0 {
 		totalPages = (total + q.Limit - 1) / q.Limit
 	}
-	return okList(c, "daftar user berhasil diambil", users, &model.Meta{
+	return okList(c, "daftar student berhasil diambil", students, &model.Meta{
 		Page: q.Page, Limit: q.Limit, Total: total, TotalPages: totalPages,
 	})
 }
-func (h *UserHandler) Get(c *fiber.Ctx) error {
+func (h *StudentHandler) Get(c *fiber.Ctx) error {
 	ctx, cancel := reqCtx(c)
 	defer cancel()
 	id, valid := paramID(c)
 	if !valid {
 		return fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
 	}
-	user, err := h.repo.FindByID(ctx, id)
+	student, err := h.repo.FindByID(ctx, id)
 	if err != nil {
-		return terjemahkanError(c, err, "gagal mengambil data user")
+		return terjemahkanError(c, err, "gagal mengambil data student")
 	}
-	return ok(c, "user ditemukan", user)
+	return ok(c, "student ditemukan", student)
 }
-func (h *UserHandler) Create(c *fiber.Ctx) error {
+func (h *StudentHandler) Create(c *fiber.Ctx) error {
 	ctx, cancel := reqCtx(c)
 	defer cancel()
 	var req model.CreateStudentRequest
@@ -110,9 +106,7 @@ func (h *UserHandler) Create(c *fiber.Ctx) error {
 	if len(errs) > 0 {
 		return failValidation(c, errs)
 	}
-	// Keunikan username TIDAK diperiksa dengan SELECT lebih dulu.
-	// Basis data sudah menjaminnya lewat UNIQUE INDEX, dan pemeriksaan
-	// manual justru menyisakan celah bila dua permintaan datang bersamaan.
+
 	baru, err := h.repo.Create(ctx, model.Student{
 		Username: req.Username,
 		Email:    req.Email,
@@ -120,13 +114,13 @@ func (h *UserHandler) Create(c *fiber.Ctx) error {
 		IsActive: true,
 	})
 	if err != nil {
-		return terjemahkanError(c, err, "gagal menyimpan user")
+		return terjemahkanError(c, err, "gagal menyimpan student baru")
 	}
-	return created(c, "user berhasil dibuat", baru,
-		"/api/v1/users/"+strconv.Itoa(baru.ID))
+	return created(c, "student berhasil dibuat", baru,
+		"/api/v1/students/"+strconv.Itoa(baru.ID))
 }
 
-func (h *UserHandler) Replace(c *fiber.Ctx) error {
+func (h *StudentHandler) Replace(c *fiber.Ctx) error {
 	ctx, cancel := reqCtx(c)
 	defer cancel()
 	id, valid := paramID(c)
@@ -151,11 +145,11 @@ func (h *UserHandler) Replace(c *fiber.Ctx) error {
 		ID: id, Username: req.Username, Email: req.Email, IsActive: req.IsActive,
 	})
 	if err != nil {
-		return terjemahkanError(c, err, "gagal memperbarui user")
+		return terjemahkanError(c, err, "gagal memperbarui student")
 	}
-	return ok(c, "user berhasil diganti seluruhnya", hasil)
+	return ok(c, "student berhasil diganti seluruhnya", hasil)
 }
-func (h *UserHandler) Patch(c *fiber.Ctx) error {
+func (h *StudentHandler) Patch(c *fiber.Ctx) error {
 	ctx, cancel := reqCtx(c)
 	defer cancel()
 	id, valid := paramID(c)
@@ -169,9 +163,6 @@ func (h *UserHandler) Patch(c *fiber.Ctx) error {
 	if req.Username == nil && req.Email == nil && req.IsActive == nil {
 		return fail(c, fiber.StatusBadRequest, "tidak ada field yang diubah")
 	}
-	// PATCH = baca dulu, ubah seperlunya, lalu simpan kembali.
-	// Repository cukup punya satu Update; perbedaan PUT dan PATCH
-	// diputuskan di lapisan ini, bukan di lapisan penyimpanan.
 	saatIni, err := h.repo.FindByID(ctx, id)
 	if err != nil {
 		return terjemahkanError(c, err, "gagal mengambil data user")
@@ -195,9 +186,9 @@ func (h *UserHandler) Patch(c *fiber.Ctx) error {
 	if err != nil {
 		return terjemahkanError(c, err, "gagal memperbarui user")
 	}
-	return ok(c, "user berhasil diperbarui sebagian", hasil)
+	return ok(c, "student berhasil diperbarui sebagian", hasil)
 }
-func (h *UserHandler) Delete(c *fiber.Ctx) error {
+func (h *StudentHandler) Delete(c *fiber.Ctx) error {
 	ctx, cancel := reqCtx(c)
 	defer cancel()
 	id, valid := paramID(c)
@@ -205,7 +196,7 @@ func (h *UserHandler) Delete(c *fiber.Ctx) error {
 		return fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
 	}
 	if err := h.repo.Delete(ctx, id); err != nil {
-		return terjemahkanError(c, err, "gagal menghapus user")
+		return terjemahkanError(c, err, "gagal menghapus student")
 	}
 	return noContent(c)
 }
