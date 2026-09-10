@@ -2,71 +2,56 @@ package main
 
 import (
 	"context"
-	"log"
-	"strings"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 	"tugas2/app/repository"
+	"tugas2/app/service"
 	"tugas2/config"
 	"tugas2/database"
-
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/fiber/v2/middleware/requestid"
 )
 
-var metodeBerbody = map[string]bool{
-	fiber.MethodPost:  true,
-	fiber.MethodPut:   true,
-	fiber.MethodPatch: true,
-}
-
-func requireJSON(c *fiber.Ctx) error {
-	if metodeBerbody[c.Method()] {
-		ct := c.Get("Content-Type")
-		if !strings.HasPrefix(ct, fiber.MIMEApplicationJSON) {
-			return fail(c, fiber.StatusUnsupportedMediaType,
-				"Content-Type harus application/json")
-		}
-	}
-	return c.Next()
-}
-
 func main() {
-	// 1. Konfigurasi
+
+	// 1. Konfigurasi dan logger
 	config.LoadEnv()
-	// 2. Koneksi basis data
+	logger := config.NewLogger()
+
+	// 2. Database
 	pool, err := database.NewPool(context.Background())
 	if err != nil {
-		log.Fatalf("database: %v", err)
+		logger.Error("gagal terhubung ke database", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	defer pool.Close()
-	// 3. Perakitan: pool -> repository -> handler
-	userRepository := repository.NewUserRepository(pool)
-	userHandler := NewUserHandler(userRepository)
-	// 4. Aplikasi (bagian ini sama seperti pertemuan 2)
-	app := fiber.New(fiber.Config{ /* ... */ })
-	app.Use(requestid.New())
-	app.Use(logger.New( /* ... */ ))
-	app.Use(cors.New())
-	api := app.Group("/api/v1")
-	api.Get("/health", func(c *fiber.Ctx) error {
-		ctx, cancel := context.WithTimeout(c.UserContext(), 2*time.Second)
-		defer cancel()
-		// Kesehatan layanan kini ikut bergantung pada basis data.
-		if err := pool.Ping(ctx); err != nil {
-			return fail(c, fiber.StatusServiceUnavailable,
-				"database tidak dapat dihubungi")
-		}
-		return ok(c, "server dan database berjalan", nil)
-	})
-	u := api.Group("/students", requireJSON)
-	u.Get("/", userHandler.List)
-	u.Get("/:id", userHandler.Get)
-	u.Post("/", userHandler.Create)
-	u.Put("/:id", userHandler.Replace)
-	u.Patch("/:id", userHandler.Patch)
-	u.Delete("/:id", userHandler.Delete)
+
+	// 3. Perakitan dari dalam ke luar: repository -> service
+	studentRepository := repository.NewStudentRepository(pool)
+	studentService := service.NewStudentService(studentRepository)
+
+	// 4. Aplikasi
+	app := config.NewApp(logger, pool, studentService)
 	port := config.GetEnv("APP_PORT", "3000")
-	log.Fatal(app.Listen(":" + port))
+	go func() {
+		if err := app.Listen(":" + port); err != nil {
+			logger.Error("server berhenti", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	}()
+	logger.Info("server berjalan", slog.String("port", port))
+
+	// 5. Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	logger.Info("sinyal berhenti diterima, menutup server")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := app.ShutdownWithContext(ctx); err != nil {
+		logger.Error("gagal menutup server dengan rapi",
+			slog.String("error", err.Error()))
+	}
+	logger.Info("server berhenti dengan rapi")
 }
