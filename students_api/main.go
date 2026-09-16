@@ -5,14 +5,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"students_api/app/repository"
+	"students_api/app/service"
+	"students_api/config"
+	"students_api/database"
+	"students_api/helper"
+	"students_api/route"
 	"syscall"
 	"time"
-	"tugas2/app/repository"
-	"tugas2/app/service"
-	"tugas2/config"
-	"tugas2/database"
-	"tugas2/helper"
-	"tugas2/route"
 )
 
 const minSecretLength = 32

@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 
-	"tugas2/helper"
+	"students_api/helper"
 )
 
 // RequireAuth memeriksa access token pada header Authorization.

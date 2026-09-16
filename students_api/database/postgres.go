@@ -3,8 +3,8 @@ package database
 import (
 	"context"
 	"fmt"
+	"students_api/config"
 	"time"
-	"tugas2/config"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

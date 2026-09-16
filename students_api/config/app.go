@@ -2,9 +2,9 @@ package config
 
 import (
 	"log/slog"
-	"tugas2/helper"
-	"tugas2/middleware"
-	"tugas2/route"
+	"students_api/helper"
+	"students_api/middleware"
+	"students_api/route"
 
 	"github.com/gofiber/fiber/v2"
 )

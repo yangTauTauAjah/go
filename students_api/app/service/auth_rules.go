@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"tugas2/app/model"
+	"students_api/app/model"
 )
 
 const minPasswordLength = 8

@@ -3,7 +3,7 @@ package helper
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"tugas2/app/model"
+	"students_api/app/model"
 )
 
 // LocalsAuthUser adalah kunci penyimpanan identitas pemakai di dalam

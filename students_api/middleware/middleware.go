@@ -3,8 +3,8 @@ package middleware
 import (
 	"log/slog"
 	"strings"
+	"students_api/helper"
 	"time"
-	"tugas2/helper"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"

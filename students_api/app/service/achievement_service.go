@@ -1,9 +1,9 @@
 package service
 
 import (
-	"tugas2/app/model"
-	"tugas2/app/repository"
-	"tugas2/helper"
+	"students_api/app/model"
+	"students_api/app/repository"
+	"students_api/helper"
 
 	"github.com/gofiber/fiber/v2"
 )

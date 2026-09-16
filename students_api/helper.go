@@ -4,8 +4,8 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"students_api/app/model"
 	"time"
-	"tugas2/app/model"
 
 	"github.com/gofiber/fiber/v2"
 )

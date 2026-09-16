@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"tugas2/app/model"
+	"students_api/app/model"
 )
 
 var (

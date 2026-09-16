@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-	"tugas2/app/model"
-	"tugas2/app/repository"
+	"students_api/app/model"
+	"students_api/app/repository"
 
 	"github.com/gofiber/fiber/v2"
 )

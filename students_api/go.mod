@@ -1,4 +1,4 @@
-module tugas2
+module students_api
 
 go 1.26.6
 

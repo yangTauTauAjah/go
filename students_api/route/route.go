@@ -2,10 +2,10 @@ package route
 
 import (
 	"context"
+	"students_api/app/service"
+	"students_api/helper"
+	"students_api/middleware"
 	"time"
-	"tugas2/app/service"
-	"tugas2/helper"
-	"tugas2/middleware"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"tugas2/app/model"
+	"students_api/app/model"
 )
 
 // TestValidateRegister menjamin ValidateRegister menerima permintaan

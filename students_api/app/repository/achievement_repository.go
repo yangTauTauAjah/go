@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"tugas2/app/model"
+	"students_api/app/model"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

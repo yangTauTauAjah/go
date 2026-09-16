@@ -1,8 +1,8 @@
 package service
 
 import (
+	"students_api/app/model"
 	"testing"
-	"tugas2/app/model"
 )
 
 func TestCountTotalPages(t *testing.T) {
