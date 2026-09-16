@@ -19,6 +19,7 @@ var (
 type StudentRepository interface {
 	FindAll(ctx context.Context, q model.ListQuery) ([]model.Student, int, error)
 	FindByID(ctx context.Context, id int) (model.Student, error)
+	FindByUsername(ctx context.Context, username string) (model.Student, error)
 	Create(ctx context.Context, u model.Student) (model.Student, error)
 	Update(ctx context.Context, u model.Student) (model.Student, error)
 	Delete(ctx context.Context, id int) error
@@ -166,4 +167,26 @@ func isUniqueViolation(err error) bool {
 		return pgErr.Code == "23505"
 	}
 	return false
+}
+
+// huruf besar dan kecil, sama seperti unique index-nya.
+func (r *studentPostgresRepository) FindByUsername(
+	ctx context.Context, username string,
+) (model.Student, error) {
+	var u model.Student
+
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, username, email, password, role, is_active, created_at 
+         FROM users WHERE LOWER(username) = LOWER($1)`, username,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role,
+		&u.IsActive, &u.CreatedAt)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Student{}, ErrNotFound
+		}
+		return model.Student{}, fmt.Errorf("mengambil user: %w", err)
+	}
+
+	return u, nil
 }
