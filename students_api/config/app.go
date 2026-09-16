@@ -2,24 +2,22 @@ package config
 
 import (
 	"log/slog"
-	"tugas2/app/service"
 	"tugas2/helper"
 	"tugas2/middleware"
 	"tugas2/route"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewApp(
-	logger *slog.Logger, pool *pgxpool.Pool, studentService *service.StudentService,
-) *fiber.App {
+func NewApp(logger *slog.Logger, dependencies route.Dependencies) *fiber.App {
+
 	app := fiber.New(fiber.Config{
 		AppName:      GetEnv("APP_NAME", "Praktikum Backend Lanjut"),
 		ErrorHandler: newErrorHandler(logger),
+		BodyLimit:    1 * 1024 * 1024,
 	})
-	middleware.Register(app, logger)
-	route.Register(app, pool, studentService)
+	middleware.Register(app, logger, GetEnv("ALLOWED_ORIGINS", ""))
+	route.Register(app, dependencies)
 	app.Use(func(c *fiber.Ctx) error {
 		return helper.Fail(c, fiber.StatusNotFound, "endpoint tidak ditemukan")
 	})
