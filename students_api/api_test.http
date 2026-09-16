@@ -218,3 +218,100 @@ GET {{baseUrl}}/api/v1/unknown
 
 ### 34. Random Path - 404
 GET {{baseUrl}}/random/path/here
+
+
+@baseUrl = http://localhost:3000/api/v1
+@contentType = application/json
+
+### 1. Register - Success
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "username": "sari",
+  "email": "sari@example.com",
+  "password": "rahasia123"
+}
+
+### 2. Register - Weak Password Rejected
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "username": "budi",
+  "email": "budi@example.com",
+  "password": "password1"
+}
+
+### 4. Access Protected Endpoint Without Token
+GET {{baseUrl}}/users
+
+### 5a. Login - Incorrect Password
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "sari",
+  "password": "salahsekali9"
+}
+
+### 5b. Login - Non-existent User
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "tidakada",
+  "password": "salahsekali9"
+}
+
+### 6. Login - Success (Captures Token)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "sari",
+  "password": "rahasia123"
+}
+
+### Store tokens from response (VS Code REST Client syntax)
+@accessToken = {{login.response.body.access_token}}
+@refreshToken = {{login.response.body.refresh_token}}
+
+### 7a. Get Current Profile (Using Access Token)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{accessToken}}
+
+### 7b. Get Users List (Using Access Token)
+GET {{baseUrl}}/users
+Authorization: Bearer {{accessToken}}
+
+### 8. Access with Tampered / Invalid Token
+GET {{baseUrl}}/users
+Authorization: Bearer {{accessToken}}X
+
+### 9a. Refresh Token - Valid Call
+# @name refreshTokenCall
+POST {{baseUrl}}/auth/refresh
+Content-Type: {{contentType}}
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### 9b. Reuse Old Refresh Token (Token Reuse Detection)
+POST {{baseUrl}}/auth/refresh
+Content-Type: {{contentType}}
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### 10. Brute Force Attempt (Simulate Consecutive Failed Logins)
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "sari",
+  "password": "salahsekali9"
+}

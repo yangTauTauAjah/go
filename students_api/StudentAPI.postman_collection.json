@@ -1,0 +1,435 @@
+{
+  "info": {
+    "name": "Tugas Pertemuan 2 - Users & Auth API",
+    "description": "Collection converted from curl exercises targeting the Fiber CRUD and Auth endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "apiPrefix",
+      "value": "/api/v1/users",
+      "type": "string"
+    },
+    {
+      "key": "contentType",
+      "value": "application/json",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Create User - johndoe (Success)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"johndoe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"rahasia123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""]
+        }
+      }
+    },
+    {
+      "name": "1a. Create User - kedua (tambahan)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"andini\",\n  \"email\": \"andini@example.com\",\n  \"password\": \"rahasia123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""]
+        }
+      }
+    },
+    {
+      "name": "1b. Create User - ketiga (tambahan)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"budi_s\",\n  \"email\": \"budi@example.com\",\n  \"password\": \"rahasia123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""]
+        }
+      }
+    },
+    {
+      "name": "2. Pagination & Sorting (page=1, limit=2, sort=username, order=desc)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}?page=1&limit=2&sort=username&order=desc",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "2" },
+            { "key": "sort", "value": "username" },
+            { "key": "order", "value": "desc" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Search & Filter (search=an, is_active=true)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}?search=an&is_active=true",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""],
+          "query": [
+            { "key": "search", "value": "an" },
+            { "key": "is_active", "value": "true" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. PUT - Replace User 1 (Success)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"john_baru\",\n  \"email\": \"jb@example.com\",\n  \"is_active\": false\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/1",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "5. PUT - Tanpa email (Validasi Gagal)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"john_baru\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/1",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "6. PATCH - Update is_active saja",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"is_active\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/1",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", "1"]
+        }
+      }
+    },
+    {
+      "name": "7. POST - Tanpa Content-Type (415)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"username\":\"x\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", ""]
+        }
+      }
+    },
+    {
+      "name": "8. DELETE - User id=2",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}{{apiPrefix}}/2",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users", "2"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 1. Register Sari",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"sari\",\n  \"email\": \"sari@example.com\",\n  \"password\": \"rahasia123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 2. Register Weak Password (Rejected)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"budi\",\n  \"email\": \"budi@example.com\",\n  \"password\": \"password1\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "register"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 4. Access Users Without Token",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 5a. Login Invalid Password",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"sari\",\n  \"password\": \"salahsekali9\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 5b. Login Non-existent User",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"tidakada\",\n  \"password\": \"salahsekali9\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 6. Login Valid (Auto-save Tokens)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = pm.response.json();",
+              "if (jsonData.access_token) {",
+              "    pm.collectionVariables.set('accessToken', jsonData.access_token);",
+              "}",
+              "if (jsonData.refresh_token) {",
+              "    pm.collectionVariables.set('refreshToken', jsonData.refresh_token);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"sari\",\n  \"password\": \"rahasia123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 7a. Get Me (Valid Token)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "me"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 7b. Get Users (Valid Token)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 8. Get Users (Tampered Token)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}X" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "users"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 9a. Refresh Token (Valid)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var jsonData = pm.response.json();",
+              "if (jsonData.access_token) {",
+              "    pm.collectionVariables.set('accessToken', jsonData.access_token);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/refresh",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "refresh"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 9b. Refresh Token (Reuse Old Token)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/refresh",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "refresh"]
+        }
+      }
+    },
+    {
+      "name": "Auth - 10. Brute Force Attempt",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "{{contentType}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"sari\",\n  \"password\": \"salahsekali9\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "auth", "login"]
+        }
+      }
+    }
+  ]
+}
