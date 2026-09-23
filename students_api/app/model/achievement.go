@@ -4,8 +4,8 @@ import "time"
 
 type Achievement struct {
 	ID        int       `json:"id"`
-	StudentID string    `json:"user_id"`
+	StudentID int       `json:"student_id"`
 	Name      string    `json:"name"`
-	Score     string    `json:"score"`
+	Score     float64   `json:"score"`
 	CreatedAt time.Time `json:"created_at"`
 }
