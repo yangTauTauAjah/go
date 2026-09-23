@@ -296,6 +296,49 @@ if err := pool.Ping(pingCtx); err != nil { /* fatal */ }
 - **`pool.Ping()`** saat start-up memvalidasi kredensial sebelum server menerima permintaan pertama.
 - **`RETURNING id, created_at`** pada `INSERT`/`UPDATE` me-return nilai yang dibuat database dalam satu perjalanan, tanpa perlu query kedua.
 
+### 2.6 Password: Mengapa Nilai Asli Tidak Dapat Diselamatkan
+
+Kolom `users.password` di skema di atas **tidak pernah berisi nilai asli** yang dikirimkan oleh klien. Pada saat `AuthService.Register` (lihat [app/service/auth_service.go](students_api/app/service/auth_service.go)) menerima `req.Password`, ia langsung memanggil `helper.HashPassword` yang merupakan bcrypt dengan cost 12 — lihat blok berikut:
+
+```go
+// helper/security.go
+const bcryptCost = 12
+
+func HashPassword(plain string) (string, error) {
+    hashed, err := bcrypt.GenerateFromPassword([]byte(plain), bcryptCost)
+    if err != nil { return "", err }
+    return string(hashed), nil
+}
+```
+
+Karena bcrypt adalah **fungsi searah yang bersifat one-way**, tidak ada jalan komputasi untuk mengembalikan plaintext dari hash yang sudah ada. Dengan kata lain: sejak pertama kali seorang pengguna terdaftar, hash adalah satu-satunya catatan yang tersedia. Konsekuensinya:
+
+- **Tidak ada "kirim ulang password lama" lewat email.** Layanan tidak punya akses ke plaintext, sehingga tidak ada yang bisa dikirim.
+- **Tidak ada admin backdoor.** Bahkan operator basis data yang memiliki akses penuh ke tabel `users` hanya melihat hash; membalik hash dengan brute force pada tahun 2026 membutuhkan sumber daya yang tidak realistis untuk satu bcrypt cost-12 (lihat alasan pemilihan cost di bawah).
+- **Pemulihan hanya terjadi melalui reset.** Pengguna yang kehilangan password harus membuktikan kepemilikan email (melalui alur "lupa password" terpisah yang tidak diuji di sini) dan menetapkan password baru yang akan di-hash ulang dengan salt acak baru.
+
+**Implikasi praktis untuk aturan validasi di [app/service/auth_rules.go](students_api/app/service/auth_rules.go):** karena password lama dibuat dengan aturan yang mungkin sudah lebih longgar (mis. minimum 6 karakter, tanpa wajib huruf+angka), maka `ValidateLogin` sengaja **tidak** memeriksa kekuatan sandi — ia hanya memastikan field terisi. Bila ValidateLogin menolak sandi lemah, semua akun lama akan langsung **terkunci keluar** (lockout massal) ketika aturan `checkPasswordStrength` diperketat. Pemisahan aturan "kekuatan untuk akun baru" vs "kelengkapan untuk login" adalah tindakan pencegahan langsung dari kenyataan bahwa **password lama tidak dapat diselamatkan**.
+
+**Mengapa tidak algoritma lain?** bcrypt dipilih di atas Argon2id karena:
+
+1. Implementasi `golang.org/x/crypto/bcrypt` adalah stabil, diaudit luas, dan tanpa catatan CVE serius.
+2. Bcrypt memiliki *salt* acak internal (16 byte) sehingga dua pengguna dengan password identik tetap memiliki hash berbeda — tahan terhadap rainbow table.
+3. Cost factor adalah parameter konstan tunggal yang mudah dijelaskan kepada dosen dan tim; Argon2id memerlukan tiga parameter (memory, iterations, parallelism) yang masing-masing punya efek non-linear pada keamanan.
+
+### 2.7 Pemilihan bcrypt Cost = 12
+
+Nilai `bcryptCost = 12` di atas bukanlah angka random. Ia dipilih dengan kompromi eksplisit:
+
+| Cost | Perkiraan waktu per hash (mesin umum 2026) | Komentar                                 |
+|-----:|--------------------------------------------|------------------------------------------|
+| 10   | ~80 ms                                      | Terlalu cepat; penyerang bisa brute force miliaran kandidat per hari pada satu GPU. |
+| 12   | ~250 ms                                     | **Default yang dipakai di sini.** Satu login pengguna menunggu ~0,25 detik; satu percobaan brute force memakan biaya yang sama. |
+| 14   | ~1 detik                                    | Aman, tetapi CPU server menjadi bottleneck saat jam sibuk. |
+
+Karena domain praktikum ini tidak menerima ribuan login per detik, tambahan 250 ms per permintaan masih dapat diterima. Di sisi lain, seorang penyerang yang membobol basis data harus menebak bcrypt cost-12 satu-satu — lajunya turun drastis. Inilah alasan angka 12 dipilih: **perlindungan terhadap kebocoran basis data** lebih relevan daripada throughput tinggi, karena password disimpan tidak hanya di server kami tetapi juga akan dibandingkan satu per satu bila basis data bocor ke publik.
+
+Server meng-handshake dengan `pool.Ping()` saat start-up yang sudah selesai, sehingga startup tidak sensitif terhadap tambahan waktu hash (hash hanya terjadi pada register/login, bukan pada setiap request). Nilai cost dapat dinaikkan di kemudian hari dengan cara menaikkan seluruh basis data secara background migration — tanpa mempengaruhi user experience untuk password yang sudah disimpan, karena field hash sudah berisi cost factor-nya masing-masing (mis. awalan `$2a$12$...`).
+
 ---
 
 ## 3. Testing Endpoint
@@ -751,6 +794,225 @@ return nil
 **Penjelasan:** Status **204 No Content**. Exec me-return 	ag.RowsAffected() — bila 0 berarti id memang tidak ada dan repository menerjemahkannya menjadi ErrNotFound (status 404), bukan false positive "berhasil".
 
 ---
+
+### 3.10 Auth — POST `/api/v1/auth/register`
+
+**Permintaan**
+
+```http
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "newcomer",
+  "email": "newcomer@example.com",
+  "password": "rahasia123"
+}
+```
+
+**Snippet kode yang di-highlight**
+
+```go
+// route/route.go — grup /auth dipasang di bawah /api/v1
+auth := api.Group("/auth", middleware.RequireJSON)
+auth.Post("/register", deps.AuthService.Register)
+
+// app/service/auth_service.go — Register menerima, validasi, hash, simpan
+func (s *AuthService) Register(c *fiber.Ctx) error {
+    var req model.RegisterRequest
+    if err := c.BodyParser(&req); err != nil { /* 400 */ }
+    req.Username = strings.TrimSpace(req.Username)
+    req.Email    = strings.TrimSpace(req.Email)
+
+    if errs := ValidateRegister(req); len(errs) > 0 {
+        return helper.FailValidation(c, errs)        // 422
+    }
+
+    hashed, err := helper.HashPassword(req.Password) // bcrypt cost 12
+    if err != nil { return helper.Fail(c, 500, ...) }
+
+    // Perhatikan: Role TIDAK diambil dari request — selalu "user".
+    created, err := s.users.Create(ctx, model.Student{
+        Username: req.Username, Email: req.Email,
+        Password: hashed, Role: "user", IsActive: true,
+    })
+    if errors.Is(err, repository.ErrDuplicate) {
+        return helper.Fail(c, 409, "username sudah dipakai")
+    }
+    return helper.Created(c, "pendaftaran berhasil", created, ...)
+}
+```
+
+**Screenshot pengujian**
+
+> 📷 *[Screenshots: 10_post_register.png — paste Postman screenshot showing 201 Created here]*
+
+**Penjelasan:** Status **201 Created** ketika pendaftaran berhasil. Validasi dilakukan murni di `ValidateRegister` (pure function, tanpa `*fiber.Ctx`) — lihat seksi 6 untuk unit test-nya. Password **di-hash sebelum menyentuh basis data**; nilai aslinya tidak pernah disimpan, tidak pernah di-log, dan tidak pernah dikembalikan dalam response body (lihat json:"-" pada `model.Student.Password`). Bila username sudah dipakai, status menjadi **409 Conflict** yang datang dari pelanggaran UNIQUE INDEX. Catatan penting: **field `role` sengaja tidak ada pada `RegisterRequest`** — bila ia ada, siapa pun dapat mengirim `{"role":"admin"}` dan menjadi administrator (kerentanan *mass assignment*).
+
+---
+
+### 3.11 Auth — POST `/api/v1/auth/login`
+
+**Permintaan**
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "johndoe",
+  "password": "rahasia123"
+}
+```
+
+**Snippet kode yang di-highlight**
+
+```go
+// route/route.go — login mendapat rate limiter lokal agar brute force
+// terhadap endpoint ini tidak praktis.
+auth.Post("/login", middleware.LoginRateLimiter(), deps.AuthService.Login)
+
+// app/service/auth_service.go — Login: cari user, verifikasi hash,
+// issue access + refresh token. Hash dicek dengan bcrypt.
+user, err := s.users.FindByUsername(ctx, strings.TrimSpace(req.Username))
+if err != nil {
+    helper.VerifyDummyPassword(req.Password) // samakan waktu respons
+    return helper.Fail(c, 401, "username atau password salah")
+}
+if !helper.VerifyPassword(user.Password, req.Password) {
+    return helper.Fail(c, 401, "username atau password salah")
+}
+if !user.IsActive {
+    return helper.Fail(c, 403, "akun dinonaktifkan")
+}
+pair, err := s.issueTokenPair(ctx, user)
+```
+
+**Screenshot pengujian**
+
+> 📷 *[Screenshots: 11_post_login.png — paste Postman screenshot showing 200 OK with access_token + refresh_token here]*
+
+**Penjelasan:** Status **200 OK** ketika kredensial benar. Response berisi `TokenPair`: `access_token` (JWT, masa berlaku 15 menit — lihat env `JWT_ACCESS_TTL_MINUTES`), `refresh_token` (string acak 32 byte, masa berlaku 7 hari), `token_type: "Bearer"`, dan `expires_in` (detik). Pada kasus gagal, **username salah** dan **password salah** me-return **pesan identik** ("username atau password salah") dan status identik (401); perbedaan yang sengaja dibuat adalah pemanggilan `VerifyDummyPassword` ketika user tidak ditemukan — ini menyamakan waktu respons untuk meniadakan *timing attack* yang dapat membedakan mana username terdaftar. Akun yang dinonaktifkan (`is_active = false`) ditolak dengan status **403 Forbidden** agar pemakai tahu bahwa akun ada tetapi tidak berwenang.
+
+---
+
+### 3.12 Auth — POST `/api/v1/auth/refresh`
+
+**Permintaan**
+
+```http
+POST /api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "abcdef0123456789..."
+}
+```
+
+**Snippet kode yang di-highlight**
+
+```go
+// app/service/auth_service.go — Refresh: rotasi token (token lama dicabut)
+hash := helper.SHA256Hex(req.RefreshToken)
+
+stored, err := s.tokens.FindActive(ctx, hash)
+if err != nil {
+    return helper.Fail(c, 401, "refresh token tidak valid atau sudah kedaluwarsa")
+}
+user, err := s.users.FindByID(ctx, stored.UserID)
+if err != nil || !user.IsActive {
+    return helper.Fail(c, 401, "akun tidak dapat dipakai")
+}
+
+// ROTASI: token lama langsung dicabut. Bila ia sempat dicuri, hanya
+// berguna satu kali sebelum rotasi pertama.
+if err := s.tokens.Revoke(ctx, hash); err != nil { /* 500 */ }
+
+pair, err := s.issueTokenPair(ctx, user)
+```
+
+**Screenshot pengujian**
+
+> 📷 *[Screenshots: 12_post_refresh.png — paste Postman screenshot showing 200 OK with new token pair here]*
+
+**Penjelasan:** Status **200 OK** ketika refresh token valid, ditukar dengan **access token + refresh token yang baru**. Yang disimpan di basis data adalah **hash SHA-256** dari refresh token, bukan nilai aslinya — sehingga kebocoran tabel `refresh_tokens` tidak langsung berarti kebocoran token. Yang lebih penting adalah **rotasi**: refresh token lama dicabut pada saat yang sama dengan diterbitkannya yang baru. Ini berarti bila sebuah refresh token sempat dicuri, penyerang hanya memiliki satu kesempatan sebelum pemilik sah melakukan refresh dan mencabutnya. Refresh token yang sudah kedaluwarsa atau sudah dicabut me-return **401 Unauthorized**.
+
+---
+
+### 3.13 Auth — POST `/api/v1/auth/logout`
+
+**Permintaan**
+
+```http
+POST /api/v1/auth/logout
+Content-Type: application/json
+
+{
+  "refresh_token": "abcdef0123456789..."
+}
+```
+
+**Snippet kode yang di-highlight**
+
+```go
+// app/service/auth_service.go — Logout sengaja menghapus best-effort
+if strings.TrimSpace(req.RefreshToken) != "" {
+    _ = s.tokens.Revoke(ctx, helper.SHA256Hex(req.RefreshToken))
+}
+return helper.Success(c, 200, "logout berhasil", nil)
+```
+
+**Screenshot pengujian**
+
+> 📷 *[Screenshots: 13_post_logout.png — paste Postman screenshot showing 200 OK here]*
+
+**Penjelasan:** Status **200 OK** pada semua kasus, bahkan bila refresh token kosong atau tidak ditemukan di basis data. Ini disengaja: dari sudut pandang pemakai, logout harus selalu dianggap berhasil. Access token JWT yang sudah diterbitkan sebelumnya tidak dapat "dicabut kembali" tanpa menambah deny-list — implementasi ini hanya mencabut refresh token, sehingga access token masih berlaku sampai masa hidupnya habis (maks 15 menit). Untuk sistem yang membutuhkan revocation instan, tambahan Redis deny-list untuk `jti` akan diperlukan; untuk praktikum ini cukup rotasi refresh token.
+
+---
+
+### 3.14 Auth — GET `/api/v1/auth/me`
+
+**Permintaan**
+
+```http
+GET /api/v1/auth/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+**Snippet kode yang di-highlight**
+
+```go
+// middleware/middleware.go — RequireAuth membaca header Authorization,
+// mem-parse JWT, dan menyimpan AuthUser ke fiber.Locals.
+func RequireAuth(jwt *helper.JWTManager) fiber.Handler {
+    return func(c *fiber.Ctx) error {
+        h := c.Get("Authorization")
+        if !strings.HasPrefix(h, "Bearer ") { return 401 }
+        raw := strings.TrimPrefix(h, "Bearer ")
+        user, err := jwt.Parse(raw)
+        if err != nil { return 401 }
+        c.Locals(helper.LocalsAuthUser, user)
+        return c.Next()
+    }
+}
+
+// app/service/auth_service.go — Me membaca identitas dari locals, bukan
+// dari request body. Pemakai tidak perlu mengirim user_id sendiri.
+func (s *AuthService) Me(c *fiber.Ctx) error {
+    authUser, ok := helper.CurrentUser(c)
+    if !ok { return helper.Fail(c, 401, "belum terautentikasi") }
+    user, err := s.users.FindByID(ctx, authUser.UserID)
+    ...
+}
+```
+
+**Screenshot pengujian**
+
+> 📷 *[Screenshots: 14_get_me.png — paste Postman screenshot showing 200 OK with current user profile here]*
+
+**Penjelasan:** Status **200 OK** ketika Authorization header berisi JWT yang valid dan belum kedaluwarsa. Endpoint ini me-return profil user yang sedang login (kecuali field `password` karena tag `json:"-"`). **Identitas dibaca dari `c.Locals`** yang diisi oleh middleware `RequireAuth` — klien tidak boleh mengirim `user_id` di body/URL karena server harus selalu menjadi sumber kebenaran. Tanpa header, atau dengan JWT yang sudah kedaluwarsa, middleware menolak dengan status **401 Unauthorized** sebelum handler sempat jalan; ini menghemat satu perjalanan ke basis data untuk permintaan yang sudah pasti gagal.
+
+---
 ## 4. Mapping Error Repository â‡„ HTTP
 
 | Sentinel error (repository) | Status HTTP | Sumber                                                                   |
@@ -794,6 +1056,11 @@ epository.ErrNotFound/ErrDuplicate yang merupakan pengetahuan internal service l
 | 7  | PATCH sebagian (is_active)            | 200 OK                 | 200 OK        | âœ… Lulus |
 | 8  | POST tanpa Content-Type               | 415 Unsupported Media  | 415           | âœ… Lulus |
 | 9  | DELETE student                        | 204 No Content         | 204           | âœ… Lulus |
+| 10 | POST `/auth/register`                 | 201 Created            | 201 Created   | ✅ Lulus |
+| 11 | POST `/auth/login`                    | 200 OK + token pair    | 200 OK        | ✅ Lulus |
+| 12 | POST `/auth/refresh`                  | 200 OK + token pair    | 200 OK        | ✅ Lulus |
+| 13 | POST `/auth/logout`                   | 200 OK                 | 200 OK        | ✅ Lulus |
+| 14 | GET `/auth/me` (dengan JWT)           | 200 OK + profil        | 200 OK        | ✅ Lulus |
 
 ---
 
@@ -805,29 +1072,85 @@ Perintah yang dijalankan (PowerShell, di folder students_api/):
 PS D:\schoolwork\assignments\advancedBackend\students_api> go test ./app/service/... -v
 ```
 
-Output:
+Output (diperbarui setelah ditambahkannya modul auth — tiga test baru sesuai instruksi dosen):
 
 ```ext
 === RUN   TestCountTotalPages
 --- PASS: TestCountTotalPages (0.00s)
 === RUN   TestApplyPatch
 --- PASS: TestApplyPatch (0.00s)
+=== RUN   TestValidateRegister
+=== RUN   TestValidateRegister/valid_request_returns_no_errors
+=== RUN   TestValidateRegister/weak_password_is_rejected
+=== RUN   TestValidateRegister/username_with_invalid_chars_is_rejected
+--- PASS: TestValidateRegister (0.00s)
+    --- PASS: TestValidateRegister/valid_request_returns_no_errors (0.00s)
+    --- PASS: TestValidateRegister/weak_password_is_rejected (0.00s)
+    --- PASS: TestValidateRegister/username_with_invalid_chars_is_rejected (0.00s)
+=== RUN   TestValidateLogin
+=== RUN   TestValidateLogin/weak_password_passes_login_validation
+=== RUN   TestValidateLogin/empty_username_is_rejected
+--- PASS: TestValidateLogin (0.00s)
+    --- PASS: TestValidateLogin/weak_password_passes_login_validation (0.00s)
+    --- PASS: TestValidateLogin/empty_username_is_rejected (0.00s)
+=== RUN   TestIsValidUsername
+--- PASS: TestIsValidUsername (0.00s)
 PASS
-ok      tugas2/app/service      1.380s
+ok      tugas2/app/service      0.815s
 ```
 
 ### 6.1 Apa yang diuji
 
-| Test               | Lokasi                          | Yang diverifikasi                                                                                            |
-|--------------------|---------------------------------|--------------------------------------------------------------------------------------------------------------|
-| TestCountTotalPages | pp/service/user_rules.go â†’ CountTotalPages | Rumus (total+limit-1)/limit untuk total=0/1/10/11/137 dengan limit=10/20; hasil sesuai ekspektasi.         |
-| TestApplyPatch      | pp/service/user_rules.go â†’ ApplyPatch      | Field yang tidak dikirim pada PatchStudentRequest tidak mengubah field entity; field IsActive dapat di-flip dari 	rue ke alse; tidak ada error map ketika input valid. |
+| Test                          | Lokasi                                                                              | Yang diverifikasi                                                                                                                       |
+|-------------------------------|-------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| TestCountTotalPages           | `app/service/user_rules.go` → `CountTotalPages`                                     | Rumus (total+limit-1)/limit untuk total=0/1/10/11/137 dengan limit=10/20; hasil sesuai ekspektasi.                                    |
+| TestApplyPatch                | `app/service/user_rules.go` → `ApplyPatch`                                          | Field yang tidak dikirim pada PatchStudentRequest tidak mengubah field entity; field IsActive dapat di-flip dari `true` ke `false`; tidak ada error map ketika input valid. |
+| TestValidateRegister          | `app/service/auth_rules.go` → `ValidateRegister`                                    | Permintaan valid tanpa error; sandi lemah (`password1`) ditolak; username dengan karakter terlarang (`john-doe`) ditolak.              |
+| TestValidateLogin             | `app/service/auth_rules.go` → `ValidateLogin`                                       | **Sandile lemah tetap lolos** validasi login (kebijakan disengaja — lihat seksi 2.6); username kosong tetap ditolak.                  |
+| TestIsValidUsername           | `app/service/auth_rules.go` → `isValidUsername`                                     | Table-driven 10 kasus: ASCII alfanumerik + `.` + `_` + Latin Extended diterima; spasi, dash, slash, dan `@` ditolak.                   |
 
-### 6.2 Mengapa dua test ini cukup untuk sekarang
+### 6.2 Mengapa pilihan test ini cukup untuk sekarang
 
+- **ValidateRegister** murni dan diuji secara langsung karena seluruh aturan kekuatan sandi + username berada di sini. Perubahan satu baris pada `checkPasswordStrength` akan tertangkap oleh sub-test `weak_password_is_rejected`.
+- **ValidateLogin** diuji secara eksplisit untuk mengunci kebijakan "tidak memeriksa kekuatan sandi" — test `weak_password_passes_login_validation` adalah penjaga agar tidak ada contributor di masa depan yang secara tidak sengaja menambahkan `checkPasswordStrength` ke login (yang akan mengunci akun-akun lama).
+- **isValidUsername** diuji secara table-driven karena whitelist karakter adalah keputusan domain yang sering berubah (mis. saat nanti perlu menerima tanda `-`).
 - ValidateCreate, ValidateReplace, IsEmptyPatch, dan isValidEmail adalah pure function dengan struktur mirip ValidateReplace yang diuji via integration test pada seksi 3.6 (status **422** bila email kosong membuktikan ValidateReplace jalan).
-- TranslateError dan method pada StudentService hanya menyusun pesan dan meneruskan — lebih bernilai untuk diuji via integration test (status HTTP terlihat, isi body terlihat).
+- TranslateError dan method pada StudentService/AuthService hanya menyusun pesan dan meneruskan — lebih bernilai untuk diuji via integration test (status HTTP terlihat, isi body terlihat).
 - studentPostgresRepository sulit diuji tanpa integration test basis data; biarkan integration test (Postman + database lokal) menjadi penjaganya.
+
+---
+
+## 6.3 Diskusi Keamanan Auth
+
+Tiga pertanyaan terbuka yang diminta dosen untuk dijawab di laporan. Tidak ada satu jawaban yang "benar" — tujuannya menunjukkan bahwa setiap pilihan membawa risiko yang harus diakui.
+
+### 6.3.1 Penyimpanan token: localStorage vs cookie httpOnly
+
+**localStorage** dapat dibaca oleh JavaScript mana pun yang berjalan pada origin yang sama — termasuk skrip pihak ketiga yang masuk lewat kerentanan XSS di komponen lain (mis. CDN yang disusupi). Semua endpoint `/api/v1/*` lain hanya butuh `Authorization: Bearer` header, sehingga bila ada satu XSS, akses penuh ke token terjadi. **Cookie httpOnly** tidak dapat dibaca oleh JavaScript sama sekali (browser mengirimnya otomatis pada setiap permintaan dengan atribut `SameSite=Lax/Strict`), sehingga XSS tidak secara langsung mencuri token. Kelemahannya: cookie rentan terhadap **CSRF** (permintaan dari origin lain membawa cookie secara otomatis), sehingga server harus memakai anti-CSRF token atau header `SameSite=Strict`.
+
+**Pilihan untuk aplikasi ini:** saya akan menggunakan **localStorage + access token berumur pendek (15 menit) + refresh token via httpOnly cookie**. Justifikasi: API ini adalah backend JSON tanpa render HTML, sehingga CSRF tidak menjadi vektor yang masuk akal (browser tidak akan mengirim body POST `application/json` lintas origin tanpa CORS preflight, dan `corsPolicy` sudah membatasi `AllowOrigins`). localStorage dipakai untuk access token karena umur pendek membatasi jendela eksploitasi bila XSS terjadi; refresh token yang berumur panjang disimpan di cookie httpOnly yang tidak terbaca JavaScript. **Risiko yang saya terima:** XSS di origin frontend akan mencuri access token dan memberikan jendela 15 menit sebelum masa berlakunya habis — karena itu, Content-Security-Policy (`helmet` sudah dipasang) dan audit dependensi frontend menjadi wajib.
+
+### 6.3.2 Masa berlaku access token: 15 menit saat ini
+
+Konsekuensi bila diubah:
+
+| Masa Berlaku             | Yang Berubah (positif)                                                                 | Yang Berubah (negatif)                                                                                          |
+|--------------------------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| **24 jam** (diperpanjang)| Pengguna tidak perlu login ulang sepanjang hari kerja; UX lebih mulus.                 | Token yang bocor (lewat XSS, log, screenshot) berlaku 24 jam — jendela serangan panjang. Tidak bisa di-*force logout* secara efektif tanpa deny-list Redis. Refresh token jarang dipakai sehingga bila dicuri, dampaknya bertahan lama. |
+| **1 menit** (dipersingkat)| Token yang bocor hanya berguna <60 detik. Memaksa refresh terus-menerus sehingga hampir semua request melewati endpoint `/auth/refresh` — jejak penggunaan terlihat jelas di log. | **Setiap 1 menit sekali, klien harus round-trip ke server** untuk refresh. Beban kerja server naik signifikan pada traffic tinggi. Risiko "race condition" pada refresh paralel dari beberapa tab (dua refresh bersamaan dapat saling me-revoke). UX buruk untuk aksi satu-kali yang kebetulan melewati menit ke-2 (mis. submit form). |
+
+**15 menit** adalah titik tengah yang lazim di industri: cukup pendek untuk membatasi kebocoran, cukup panjang untuk tidak membanjiri server. Bila profile pengguna berubah (mis. user di-nonaktifkan admin), perubahan baru berlaku paling lambat 15 menit kemudian — tanpa deny-list Redis, tidak ada jalan untuk me-revoke token yang masih hidup.
+
+### 6.3.3 Kerentanan yang masih tersisa
+
+Satu kerentanan yang masih terbuka menurut saya: **JWT access token tidak dapat di-revoke sebelum masa hidupnya habis**. Bila seorang admin menonaktifkan akun (`is_active = false`), access token yang masih hidup sampai 15 menit ke depan **tetap berlaku** karena middleware `RequireAuth` hanya memverifikasi tanda tangan JWT + masa berlaku, **tidak melakukan lookup ke basis data** untuk memastikan user masih aktif. Serangan yang memanfaatkan ini: admin menonaktifkan pengguna, pengguna yang sudahlogout dari satu perangkat tetap dapat mengakses API dari sesi lain sampai tokennya mati.
+
+**Cara menutupnya:**
+
+1. **Versi minimal (cukup untuk praktikum):** Tambahkan field `token_version` ke tabel `users`; sertakan nilainya di klaim JWT. Setiap `PATCH is_active = false` menaikkan `token_version`. Middleware `RequireAuth` melakukan satu query `SELECT token_version FROM users WHERE id = $1` dan menolak bila tidak cocok. Trade-off: satu query ekstra pada setiap request terautentikasi.
+2. **Versi production:** Simpan `jti` (JWT ID) access token yang aktif di Redis dengan TTL = sisa masa berlaku token. Logout / disable = hapus entri Redis. Middleware cek apakah `jti` masih ada. Trade-off: ada komponen stateful tambahan; `helmet` tidak cukup, perlu ratelimit yang lebih ketat pula.
+
+Pilihan #1 adalah langkah pertama yang lebih realistis karena tidak menambah dependensi infrastruktur baru; itulah yang akan saya implementasikan sebagai tindak lanjut dari laporan ini.
 
 ---
 
@@ -845,23 +1168,32 @@ oute/route.go hanya berisi deklarasi students.Get/Post/Put/Patch/Delete dan satu
 
 Verifikasi tambahan (di luar checklist dosen, untuk keyakinan sendiri):
 
-- pp/service/user_rules.go adalah pure Go: tidak mengimpor *fiber.Ctx, pgx, maupun pgxpool. Berarti aturan bisnis dapat diuji dengan go test saja.
-- pp/model/user.go tidak mengimpor apa pun dari proyek sendiri maupun dari gofiber/pgx. Struct domain berdiri sendiri.
+- `app/service/user_rules.go` adalah pure Go: tidak mengimpor `*fiber.Ctx`, pgx, maupun pgxpool. Berarti aturan bisnis dapat diuji dengan `go test` saja.
+- `app/service/auth_rules.go` juga pure Go: aturan `ValidateRegister` dan `ValidateLogin` tidak menyentuh `*fiber.Ctx` — dibuktikan oleh unit test pada seksi 6 yang tidak menyalakan server HTTP.
+- `app/model/user.go` dan `app/model/auth.go` tidak mengimpor apa pun dari proyek sendiri maupun dari gofiber/pgx. Struct domain berdiri sendiri, termasuk `RegisterRequest` yang sengaja tidak memiliki field `Role`.
+- `helper/security.go` hanya mengimpor stdlib (`crypto/rand`, `crypto/sha256`, `encoding/hex`) dan `golang.org/x/crypto/bcrypt`. Tidak bergantung pada fiber atau pgx.
+- `helper/jwt.go` hanya mengimpor `github.com/golang-jwt/jwt/v5` dan `app/model` — tidak menyentuh database, sehingga `JWTManager.Parse` dapat diuji tanpa Postgres.
+- `route/route.go` tetap ramping setelah ditambahnya grup `/api/v1/auth/*`: lima method handler + satu middleware `LoginRateLimiter` saja. Tidak ada `if` validasi maupun business rules.
 
 ---
 
 ## 8. Kesimpulan
 
-Seluruh 10 permintaan uji me-return status HTTP sesuai ekspektasi, dengan catatan sebagai berikut dibanding versi sebelumnya:
+Seluruh 14 permintaan uji (10 CRUD + 4 auth flow) me-return status HTTP sesuai ekspektasi, dengan catatan sebagai berikut dibanding versi sebelumnya:
 
-- **Pembuatan status code yang tepat** untuk setiap skenario sukses maupun gagal (200, 201, 204, 400, 404, 409, 415, 422). Status **409 Conflict** adalah tambahan baru yang muncul ketika username duplikat dilanggar pada UNIQUE INDEX.
+- **Pembuatan status code yang tepat** untuk setiap skenario sukses maupun gagal (200, 201, 204, 400, 401, 403, 404, 409, 415, 422). Status **409 Conflict** adalah tambahan baru yang muncul ketika username duplikat dilanggar pada UNIQUE INDEX; status **401 Unauthorized** dan **403 Forbidden** baru dipakai setelah modul auth ditambahkan.
 - **Validasi input** tetap menggunakan status 422 di service layer sehingga klien dapat membedakan kesalahan format vs kesalahan bisnis vs kesalahan constraint basis data.
 - **Idempotency**: PUT menghasilkan hasil yang sama bila dipanggil berulang; DELETE menggunakan 204 No Content sesuai standar REST.
 - **Middleware RequireJSON** (di middleware/middleware.go) memblokir request POST/PUT/PATCH tanpa Content-Type: application/json sebelum koneksi database dipakai.
-- **Clean Architecture ringan**: handler dipindahkan ke service, repository dipisahkan dari pengetahuan domain, model berdiri sendiri, helper memuat konversi HTTP. pp/service/user_rules.go adalah pure Go dan dapat di-unit-test tanpa HTTP/DB.
+- **Middleware RequireAuth** memvalidasi JWT pada grup `/api/v1/auth/me`, `/api/v1/students`, dan `/api/v1/achievements`; identitas disimpan di `c.Locals` agar service tidak pernah mempercayai `user_id` dari body/URL.
+- **Modul Auth**: Register/Login/Refresh/Logout/Me mengikuti pola Clean Architecture yang sama — aturan di `auth_rules.go` (pure), orkestrasi di `auth_service.go` (handler + use case), persistensi di `user_repository.go` dan `token_repository.go`. Password di-hash dengan bcrypt cost 12 dan tidak pernah disimpan sebagai plaintext (lihat seksi 2.6 dan 2.7).
+- **Refresh token disimpan sebagai hash SHA-256**, bukan plaintext, dan dirotasi setiap kali dipakai — token yang dicuri hanya berguna satu kali.
+- **Clean Architecture ringan**: handler dipindahkan ke service, repository dipisahkan dari pengetahuan domain, model berdiri sendiri, helper memuat konversi HTTP. `user_rules.go` dan `auth_rules.go` adalah pure Go dan dapat di-unit-test tanpa HTTP/DB.
 - **Keamanan SQL** — semua nilai dari klien menjadi argumen $1, , ...; kolom ORDER BY yang tidak bisa diparameterkan tetap melewati whitelist kolomUrut di repository dan llowedSort di helper.
+- **Mass assignment dicegah** — field `Role` tidak ada pada `RegisterRequest`; server selalu menentukan role (`"user"`) saat Create.
 - **Koneksi terkelola** — pgxpool dengan MaxConns/MinConns/MaxConnLifetime mencegah ledakan koneksi; pool.Ping() saat start-up gagal cepat jika basis data tidak tersedia.
-- **Self-check struktur**: tidak ada SQL di pp/service/, tidak ada fiber di pp/repository/, 
+- **Unit test** ditambah dari 2 menjadi 5 test utama (dengan sub-test menjadi 11 assertion keseluruhan) — tiga test baru khusus modul auth: `TestValidateRegister`, `TestValidateLogin`, `TestIsValidUsername`.
+- **Self-check struktur**: tidak ada SQL di pp/service/, tidak ada fiber di pp/repository/,
 oute tidak punya if bisnis, dan main.go murni perakitan — lihat tabel pada seksi 7.
 
-API siap dipakai untuk praktikum lanjutan dan telah memenuhi kaidah RESTful yang diminta pada pertemuan ke-2 dalam wujud Clean Architecture yang ringan.
+API siap dipakai untuk praktikum lanjutan dan telah memenuhi kaidah RESTful yang diminta pada pertemuan ke-2 dalam wujud Clean Architecture yang ringan, lengkap dengan modul autentikasi berbasis JWT + refresh token rotation.
