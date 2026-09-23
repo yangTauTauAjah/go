@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"students_api/app/model"
@@ -23,6 +24,7 @@ type StudentRepository interface {
 	Create(ctx context.Context, u model.Student) (model.Student, error)
 	Update(ctx context.Context, u model.Student) (model.Student, error)
 	Delete(ctx context.Context, id int) error
+	UpdateRole(ctx context.Context, id int, role string) (model.Student, error)
 }
 
 var kolomUrut = map[string]string{
@@ -64,17 +66,43 @@ func (r *studentPostgresRepository) FindAll(
 	if err != nil {
 		return nil, 0, fmt.Errorf("menghitung student: %w", err)
 	}
+
 	arah := "ASC"
 	if q.Order == "desc" {
 		arah = "DESC"
 	}
+
+	// Gunakan LEFT JOIN + GROUP BY + json_agg agar student tanpa achievement tetap muncul
+	// dan pagination (LIMIT/OFFSET) tetap konsisten per-student.
 	sqlText := fmt.Sprintf(
-		`SELECT id, username, email, password, is_active, created_at
- FROM users%s
- ORDER BY %s %s
- LIMIT $%d OFFSET $%d`,
+		`SELECT 
+			u.id, 
+			u.username, 
+			u.role,
+			u.email, 
+			u.password, 
+			u.is_active, 
+			u.created_at,
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'id', a.id,
+						'name', a.achievement_name,
+						'score', a.achievement_score,
+						'created_at', a.created_at
+					)
+				) FILTER (WHERE a.id IS NOT NULL), 
+				'[]'
+			) AS achievements
+		FROM users u
+		LEFT JOIN achievements a ON u.id = a.student_id
+		%s
+		GROUP BY u.id
+		ORDER BY u.%s %s
+		LIMIT $%d OFFSET $%d`,
 		where, kolomUrut[q.Sort], arah, len(args)+1, len(args)+2,
 	)
+
 	args = append(args, q.Limit, q.Offset())
 	rows, err := r.pool.Query(ctx, sqlText, args...)
 	if err != nil {
@@ -84,10 +112,25 @@ func (r *studentPostgresRepository) FindAll(
 	hasil := []model.Student{}
 	for rows.Next() {
 		var u model.Student
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Password,
-			&u.IsActive, &u.CreatedAt); err != nil {
+		var achievementsJSON []byte
+
+		if err := rows.Scan(
+			&u.ID,
+			&u.Username,
+			&u.Role,
+			&u.Email,
+			&u.Password,
+			&u.IsActive,
+			&u.CreatedAt,
+			&achievementsJSON,
+		); err != nil {
 			return nil, 0, fmt.Errorf("membaca baris student: %w", err)
 		}
+
+		if err := json.Unmarshal(achievementsJSON, &u.Achievements); err != nil {
+			return nil, 0, fmt.Errorf("unmarshal achievements: %w", err)
+		}
+
 		hasil = append(hasil, u)
 	}
 	if err := rows.Err(); err != nil {
@@ -101,9 +144,9 @@ func (r *studentPostgresRepository) FindByID(
 ) (model.Student, error) {
 	var u model.Student
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, username, email, password, is_active, created_at
+		`SELECT id, username, role, email, password, is_active, created_at
  FROM users WHERE id = $1`, id,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.IsActive, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.Role, &u.Email, &u.Password, &u.IsActive, &u.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.Student{}, ErrNotFound
@@ -116,10 +159,10 @@ func (r *studentPostgresRepository) Create(
 	ctx context.Context, u model.Student,
 ) (model.Student, error) {
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO users (username, email, password, is_active)
- VALUES ($1, $2, $3, $4)
+		`INSERT INTO users (username, role, email, password, is_active)
+ VALUES ($1, $2, $3, $4, $5)
  RETURNING id, created_at`,
-		u.Username, u.Email, u.Password, u.IsActive,
+		u.Username, u.Role, u.Email, u.Password, u.IsActive,
 	).Scan(&u.ID, &u.CreatedAt)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -133,11 +176,11 @@ func (r *studentPostgresRepository) Update(
 	ctx context.Context, u model.Student,
 ) (model.Student, error) {
 	err := r.pool.QueryRow(ctx,
-		`UPDATE users SET username = $1, email = $2, is_active = $3
- WHERE id = $4
- RETURNING id, username, email, password, is_active, created_at`,
-		u.Username, u.Email, u.IsActive, u.ID,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.IsActive, &u.CreatedAt)
+		`UPDATE users SET username = $1, role = $2, email = $3, is_active = $4
+ WHERE id = $5
+ RETURNING id, username, role, email, password, is_active, created_at`,
+		u.Username, u.Role, u.Email, u.IsActive, u.ID,
+	).Scan(&u.ID, &u.Username, &u.Role, &u.Email, &u.Password, &u.IsActive, &u.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.Student{}, ErrNotFound
@@ -176,10 +219,9 @@ func (r *studentPostgresRepository) FindByUsername(
 	var u model.Student
 
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, username, email, password, role, is_active, created_at 
+		`SELECT id, username, role, email, password, is_active, created_at 
          FROM users WHERE LOWER(username) = LOWER($1)`, username,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role,
-		&u.IsActive, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.Role, &u.Email, &u.Password, &u.IsActive, &u.CreatedAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -189,4 +231,21 @@ func (r *studentPostgresRepository) FindByUsername(
 	}
 
 	return u, nil
+}
+
+func (r *studentPostgresRepository) UpdateRole(
+	ctx context.Context, id int, role string,
+) (model.Student, error) {
+	studentColumns := "id, username, email, password, role, is_active, created_at"
+	var updated model.Student
+	err := r.pool.QueryRow(ctx,
+		"UPDATE users SET role = $1 WHERE id = $2 RETURNING "+studentColumns,
+		role, id).Scan(&updated.ID, &updated.Username, &updated.Email, &updated.Password, &updated.Role, &updated.IsActive, &updated.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Student{}, ErrNotFound
+		}
+		return model.Student{}, fmt.Errorf("mengubah role user: %w", err)
+	}
+	return updated, nil
 }
