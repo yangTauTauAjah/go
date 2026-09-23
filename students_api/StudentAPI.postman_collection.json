@@ -12,7 +12,32 @@
     },
     {
       "key": "apiPrefix",
-      "value": "/api/v1/users",
+      "value": "/api/v1/students",
+      "type": "string"
+    },
+    {
+      "key": "tokenAdmin",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenStaff",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenUser",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenUserLama",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tokenUserBaru",
+      "value": "",
       "type": "string"
     },
     {
@@ -430,6 +455,750 @@
           "path": ["api", "v1", "auth", "login"]
         }
       }
+    },
+    {
+      "name": "RBAC - Setup Akun (Register 3 akun)",
+      "item": [
+        {
+          "name": "Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"email\": \"admin@unair.ac.id\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register Staff",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"staff\",\n  \"email\": \"staff@unair.ac.id\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register User Biasa",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"userbiasa\",\n  \"email\": \"user@unair.ac.id\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - Login & Simpan Token",
+      "item": [
+        {
+          "name": "Login Admin (simpan tokenAdmin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('tokenAdmin', jsonData.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login Staff (simpan tokenStaff)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('tokenStaff', jsonData.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"staff\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login User Biasa (simpan tokenUser)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('tokenUser', jsonData.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"userbiasa\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - GET /students (list)",
+      "item": [
+        {
+          "name": "GET list - admin (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", ""]
+            }
+          }
+        },
+        {
+          "name": "GET list - staff (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenStaff}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", ""]
+            }
+          }
+        },
+        {
+          "name": "GET list - user (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenUser}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - GET /students/:id (diri sendiri)",
+      "item": [
+        {
+          "name": "GET self id=1 - admin (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        },
+        {
+          "name": "GET self id=2 - staff (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenStaff}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "2"]
+            }
+          }
+        },
+        {
+          "name": "GET self id=3 - user (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenUser}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "3"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - GET /students/:id (orang lain)",
+      "item": [
+        {
+          "name": "GET other - admin (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "2"]
+            }
+          }
+        },
+        {
+          "name": "GET other - staff (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenStaff}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "3"]
+            }
+          }
+        },
+        {
+          "name": "GET other - user (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenUser}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - PUT /students/:id (orang lain)",
+      "item": [
+        {
+          "name": "PUT other - admin (200)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"staff_updated\",\n  \"email\": \"staff_new@unair.ac.id\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "2"]
+            }
+          }
+        },
+        {
+          "name": "PUT other - staff (403)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenStaff}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin_updated\",\n  \"email\": \"admin_new@unair.ac.id\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        },
+        {
+          "name": "PUT other - user (403)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenUser}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"user_updated\",\n  \"email\": \"user_new@unair.ac.id\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - DELETE /students/:id (orang lain)",
+      "item": [
+        {
+          "name": "DELETE other - admin (204)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "2"]
+            }
+          }
+        },
+        {
+          "name": "DELETE other - staff (403)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenStaff}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        },
+        {
+          "name": "DELETE other - user (403)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenUser}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - DELETE /students/:id (diri sendiri)",
+      "item": [
+        {
+          "name": "DELETE self - admin (403)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        },
+        {
+          "name": "DELETE self - staff (403)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenStaff}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "2"]
+            }
+          }
+        },
+        {
+          "name": "DELETE self - user (403)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenUser}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/3",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "3"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - PATCH /students/:id/role (orang lain)",
+      "item": [
+        {
+          "name": "PATCH role other - admin (200, naikkan user ke staff)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"staff\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/3/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "3", "role"]
+            }
+          }
+        },
+        {
+          "name": "PATCH role other - staff (403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenStaff}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1", "role"]
+            }
+          }
+        },
+        {
+          "name": "PATCH role other - user (403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenUser}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1", "role"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - PATCH /students/:id/role (diri sendiri)",
+      "item": [
+        {
+          "name": "PATCH role self - admin (422)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"staff\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1", "role"]
+            }
+          }
+        },
+        {
+          "name": "PATCH role self - staff (403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenStaff}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/2/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "2", "role"]
+            }
+          }
+        },
+        {
+          "name": "PATCH role self - user (403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{tokenUser}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/3/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "3", "role"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - Tanpa Authorization Header",
+      "item": [
+        {
+          "name": "GET list tanpa token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", ""]
+            }
+          }
+        },
+        {
+          "name": "PUT tanpa token (401)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"x\",\n  \"email\": \"x@example.com\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        },
+        {
+          "name": "DELETE tanpa token (401)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1"]
+            }
+          }
+        },
+        {
+          "name": "PATCH role tanpa token (401)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"staff\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/1/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "1", "role"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC - Token Lama Setelah Role Berubah",
+      "item": [
+        {
+          "name": "Login userbiasa SEBELUM role berubah (simpan tokenUserLama)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('tokenUserLama', jsonData.access_token);",
+                  "    pm.collectionVariables.set('tokenUser', jsonData.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"userbiasa\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "GET list dengan tokenUserLama (403 -- role masih 'user')",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenUserLama}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", ""]
+            }
+          }
+        },
+        {
+          "name": "Login userbiasa SETELAH role diubah admin (simpan tokenUserBaru)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('tokenUserBaru', jsonData.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"userbiasa\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "GET list dengan tokenUserBaru (200 -- role sekarang 'staff')",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenUserBaru}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", ""]
+            }
+          }
+        }
+      ]
     }
   ]
 }
