@@ -1,1199 +1,514 @@
-﻿# Laporan Pengujian API — Praktikum Backend Lanjut Pertemuan 2
+Nama: **Habib Anwash**
+NIM: **434241033**
+Repo URL: https://github.com/yangTauTauAjah/go
 
-**Mata Kuliah:** Backend Lanjut
-**Pertemuan:** 2
-**Framework:** Go + Fiber v2
-**Storage:** PostgreSQL (driver `pgx/v5` & pool `pgxpool`)
-**Server:** `http://localhost:3000`
-**Tanggal Pengujian:** 9 September 2026
-**Tool Pengujian:** Postman (collection: `Tugas_Pertemuan_2.postman_collection.json`)
-**Arsitektur:** Clean Architecture (versi ringan — service + repository + model + helper)
+## **1. Testing Endpoint**
 
-> **Versi program:** Pertemuan ke-2 versi lanjut. Setelah versi pertama dengan slice in-memory dan versi kedua dengan PostgreSQL raw query di handler, kini kode disusun ulang mengikuti **Clean Architecture** ringan: handler dipindahkan ke `service` (use case), repository dipisahkan dari pengetahuan domain, model berdiri sendiri, dan `helper` memuat konversi HTTP. HTTP contract (route, body, status code) tetap sama sehingga pengujian tidak perlu diulang dari awal.
+### ** 1. GET — /students (list, admin)**
 
----
-
-## 1. Informasi Umum
-
-API yang diuji adalah service CRUD untuk resource **users** (nama struct: `model.Student`, path: `/api/v1/students`) dengan prefix `/api/v1`. Setiap pengujian dilakukan menggunakan Postman dan menekankan **status HTTP** yang di-return oleh server, bukan hanya isi body response.
-
-### 1.1 Endpoint yang diuji
-
-| No | Method | Path                    | Tujuan                          | Status Sukses        |
-|----|--------|-------------------------|---------------------------------|----------------------|
-| 1  | POST   | `/api/v1/students`      | Membuat student baru            | 201 Created          |
-| 2  | GET    | `/api/v1/students`      | Mengambil daftar + filter/sort  | 200 OK               |
-| 3  | GET    | `/api/v1/students/:id`  | Mengambil detail student        | 200 OK / 404         |
-| 4  | PUT    | `/api/v1/students/:id`  | Mengganti seluruh data student  | 200 / 422 / 404 / 409 |
-| 5  | PATCH  | `/api/v1/students/:id`  | Memperbarui sebagian data       | 200 / 400 / 404 / 422 |
-| 6  | DELETE | `/api/v1/students/:id`  | Menghapus student               | 204 No Content / 404 |
-| 7  | GET    | `/api/v1/health`        | Health check + DB ping          | 200 / 503            |
-
-### 1.2 Struktur Proyek & Tanggung Jawab Tiap File
+#### Request
 
 ```
-students_api/
-├── main.go                     # bootstrap: env → pool → repo → service → app
-├── go.mod                      # module tugas2; dependensi fiber, pgx, slog
-├── .env, .env.example          # konfigurasi runtime
-├── migrations/
-│   └── 001_create_students.sql # CREATE TABLE users + indeks UNIQUE/email
-├── logs/                       # output slog ke file via lumberjack (rotasi)
-├── config/
-│   ├── env.go                  # LoadEnv, GetEnv, GetEnvInt (godotenv)
-│   ├── app.go                  # NewApp: middleware + route + 404 handler
-│   └── logger.go               # NewLogger: slog JSON → stdout + file rotator
-├── database/
-│   └── postgres.go             # NewPool(ctx): DSN + ParseConfig + Ping
-├── middleware/
-│   └── middleware.go           # requestid, recover, helmet, cors, logger, RequireJSON
-├── route/
-│   └── route.go                # Register: pemetaan URL → method pada service
-├── helper/
-│   ├── request.go              # RequestContext, ParamID, ParseListQuery
-│   └── response.go             # Success, SuccessList, Created, NoContent, Fail, FailValidation
-├── app/
-│   ├── model/
-│   │   └── user.go             # Student, CreateStudentRequest, Replace/Patch, WebResponse, Meta, ListQuery
-│   ├── repository/
-│   │   └── user_repository.go  # interface StudentRepository + impl pgx; sentinel error
-│   └── service/
-│       ├── user_service.go     # StudentService: use case + handler Fiber
-│       ├── user_rules.go       # ValidateCreate/Replace, ApplyPatch, IsEmptyPatch, isValidEmail
-│       └── user_rule_test.go   # unit test untuk CountTotalPages & ApplyPatch
-├── handler.go                  # ⚠ kode lama — tidak dipakai main.go lagi (dead code)
-├── helper.go                   # ⚠ kode lama — tidak dipakai route/service (dead code)
-├── api_test.http               # REST Client test untuk VS Code
-├── Tugas_Pertemuan_2.postman_collection.json
-└── laporan.md                  # laporan ini
+GET /api/v1/students/
+Authorization: Bearer <tokenAdmin>
 ```
 
-#### Tabel Tanggung Jawab Tiap Modul
+#### Screenshot pengujian
 
-| Modul / File                | Tanggung jawab                                                                 |
-|-----------------------------|--------------------------------------------------------------------------------|
-| `main.go`                   | Hanya perakitan: load env → buka pool → buat repository → buat service → buat app → listen + graceful shutdown. Tidak ada logika bisnis. |
-| `config/env.go`             | Membaca `.env` via godotenv; helper `GetEnv`/`GetEnvInt` dengan nilai default.  |
-| `config/app.go`             | Konstruktor `*fiber.App`: mendaftarkan middleware, mendaftarkan route, menambah fallback 404, serta ErrorHandler global. |
-| `config/logger.go`          | `slog` JSON handler yang menulis ke stdout **dan** file `logs/app.log` dengan rotasi `lumberjack` (10 MB × 5 file × 14 hari). |
-| `database/postgres.go`      | Membangun `pgxpool.Pool`; `Ping()` saat start-up memvalidasi kredensial.       |
-| `middleware/middleware.go`  | `requestid`, `recover`, `helmet`, `cors`, `RequestLogger` (slog ber-struktur), dan `RequireJSON` untuk body POST/PUT/PATCH. |
-| `route/route.go`            | `Register` memetakan URL ke method pada `*service.StudentService`; tidak berisi logika apa pun. Health check inline di sini. |
-| `helper/request.go`         | `RequestContext` (timeout 5 detik), `ParamID` (parse + validasi id), `ParseListQuery` (whitelist `sort`, batas `limit`, default aman). |
-| `helper/response.go`        | Konstruktor response seragam: `Success`, `SuccessList`, `Created` (Location), `NoContent`, `Fail`, `FailValidation`. |
-| `app/model/user.go`         | Struct domain (`Student`), tipe request/response, `WebResponse`, `Meta`, `ListQuery` (beserta `Offset()`). Tidak mengimpor fiber/pgx. |
-| `app/repository/user_repository.go` | Interface `StudentRepository` + implementasinya `studentPostgresRepository`. Sentinel error `ErrNotFound`, `ErrDuplicate`. Whitelist `kolomUrut`. Query parameterized. |
-| `app/service/user_service.go`     | **Use case + handler**. Method `List/Get/Create/Replace/Patch/Delete` menerima `*fiber.Ctx`, memanggil rule pada `user_rules.go`, lalu memanggil repository. |
-| `app/service/user_rules.go`       | Aturan bisnis murni (tanpa `*fiber.Ctx`): `ValidateCreate`, `ValidateReplace`, `ApplyPatch`, `IsEmptyPatch`, `CountTotalPages`, `isValidEmail`. Bisa di-`unit-test` tanpa HTTP. |
-| `app/service/user_rule_test.go`   | Unit test Go (`testing`) untuk `CountTotalPages` & `ApplyPatch`.                  |
-| `migrations/001_create_students.sql` | Skema tabel `users` + indeks `users_username_lower_key` (UNIQUE) + `users_email_lower_idx`. |
-| `handler.go`, `helper.go` (root)   | Sisa dari versi in-memory. **Saat ini tidak diimpor** oleh `main.go`/`route.go` — dead code yang dapat dihapus tanpa mengubah perilaku. |
+[[image placeholder]]
 
-### 1.3 Middleware Aktif (urutan eksekusi)
+### ** 2. GET — /students (list, staff)**
 
-`middleware.Register(app, logger)` mendaftarkan middleware global dengan urutan:
+#### Request
 
-1. `requestid` — memberi setiap request satu ID unik (`requestid`).
-2. `recover` — menangkap panic agar server tidak crash.
-3. `helmet` — header keamanan dasar.
-4. `cors` — Cross-Origin Resource Sharing default.
-5. `RequestLogger(logger)` — log `slog` JSON dengan `request_id`, `method`, `path`, `status`, `duration`, `ip`.
-
-Untuk grup `/api/v1/students` ditambahkan middleware lokal **`RequireJSON`**: method `POST/PUT/PATCH` wajib memiliki header `Content-Type: application/json`, bila tidak akan return `415 Unsupported Media Type` sebelum masuk ke `service`.
-
-### 1.4 Status `503 Service Unavailable` (baru)
-
-Karena `GET /api/v1/health` kini ikut melakukan `pool.Ping` dengan timeout 2 detik, server dapat return `503` ketika database tidak dapat dihubungi. Skenario ini tidak diuji di sini karena pengujian difokuskan pada endpoint CRUD.
-
-### 1.5 Self-Check: Pemeriksaan Sendiri Proyek (Checklist Dosen)
-
-Pemeriksaan berikut dibuktikan di bagian **7. Checklist Pemeriksaan Sendiri**.
-
-| Yang diperiksa                  | Harus                                                           | Hasil |
-|---------------------------------|-----------------------------------------------------------------|-------|
-| Import pada package `app/model` | Tidak ada satu pun package dari proyek Anda sendiri            | ✅    |
-| Import pada package `app/repository` | Tidak ada gofiber sama sekali                              | ✅    |
-| Isi package `app/service`       | Tidak ada satu pun perintah SQL                                 | ✅    |
-| Isi file `route`                | Tidak ada `if` untuk validasi maupun business rules             | ✅    |
-| Isi file `main.go`              | Tidak ada handler; hanya urutan perakitan                        | ✅    |
-
-### 1.6 Architecture Map (Dependency Graph)
-
-Diagram berikut menunjukkan **arah import** antar-package pada proyek (siapa mengimpor siapa). Anak panah mengarah ke package yang **bergantung** (`A --> B` berarti `A` mengimpor `B`).
-
-```mermaid
-graph TD
-    classDef domain fill:#cfe2ff,stroke:#0d6efd,stroke-width:2px;
-    classDef boundary fill:#d1e7dd,stroke:#198754,stroke-width:2px;
-    classDef infra fill:#f8f9fa,stroke:#6c757d,stroke-dasharray: 4 4;
-
-    subgraph Entry["Entry & Setup"]
-        MAIN["main.go"]
-        CONFIG["config & database<br/>(Env, Logger, PgxPool)"]
-    end
-
-    subgraph Transport["Transport Layer (HTTP / Fiber)"]
-        ROUTE["route.go & middleware.go"]
-    end
-
-    subgraph AppLogic["Application & Use Case Layer"]
-        SERVICE["user_service.go"]
-        RULES["user_rules.go"]
-    end
-
-    subgraph Domain["Core Domain"]
-        MODEL["user.go<br/>(Entities & Structs)"]
-        REPO_IF["StudentRepository<br/>(Interface)"]
-    end
-
-    subgraph DataAccess["Infrastructure & Persistence"]
-        REPO_PG["studentPostgresRepository<br/>(pgxpool implementation)"]
-        DB[(PostgreSQL)]
-    end
-
-    %% Dependency & Execution Flow
-    MAIN --> CONFIG
-    MAIN --> ROUTE
-    MAIN -. wires .-> REPO_PG
-
-    ROUTE --> SERVICE
-    SERVICE --> RULES
-    SERVICE --> REPO_IF
-
-    %% Inversion of Control & Data Access
-    REPO_PG -. implements .-> REPO_IF
-    REPO_PG --> DB
-
-    %% Domain references
-    SERVICE -. uses .-> MODEL
-    REPO_IF -. returns .-> MODEL
-    RULES -. validates .-> MODEL
-
-    class MODEL,RULES domain;
-    class REPO_IF boundary;
-    class CONFIG,DB infra;
+```
+GET /api/v1/students/
+Authorization: Bearer <tokenStaff>
 ```
 
-### 1.7 Pemetaan ke Empat Layer Clean Architecture
+#### Screenshot pengujian
 
-| Layer Clean Architecture          | Folder / file proyek                                     | Catatan                                                                 |
-|-----------------------------------|----------------------------------------------------------|-------------------------------------------------------------------------|
-| **1. Entities** (aturan bisnis enterprise paling murni) | `app/model/user.go`, `app/service/user_rules.go` | Struct domain & fungsi validasi/patch. Tidak mengimpor fiber, pgx, atau package lain proyek. |
-| **2. Use Cases** (aturan aplikasi spesifik)            | `app/service/user_service.go`              | Orkestrasi alur per endpoint: parse → validate → repo → response.     |
-| **3. Interface Adapters** (konversi data ↔ dunia luar) | `route/route.go`, `helper/request.go`, `helper/response.go`, `app/repository/user_repository.go` (interface + impl pgx) | `route` & `helper` mengkonversi HTTP ↔ domain; `repository` mengkonversi domain ↔ SQL. |
-| **4. Framework & Drivers** (detail mekanis: DB, web, UI) | `main.go`, `config/*`, `database/postgres.go`, `middleware/middleware.go`, `logs/`, `migrations/*.sql`, `go.mod` | Hal yang dapat diganti (driver DB, web framework, logger) tanpa menyentuh logika di atas. |
+[[image placeholder]]
 
-#### Apa yang **disederhanakan** dibanding Clean Architecture murni
+### ** 3. GET — /students (list, user)**
 
-- **Service dan handler digabung.** Pada Clean Architecture murni, "use case" menerima input terstruktur (mis. `CreateStudentInput`) dan me-return output/domain error, lalu sebuah `handler` (interface adapter) mengkonversi ke HTTP. Di proyek ini `*service.StudentService.Create` menerima `*fiber.Ctx` langsung — coupling ke Fiber lebih kuat, tetapi jumlah file berkurang dan tracing satu endpoint lebih pendek.
-- **Tidak ada `repository.NewStudentRepositoryMock()` di luar paket.** Mock dibuat inline pada unit test (cukup untuk service yang hanya bergantung pada interface `repository.StudentRepository`).
-- **Tidak ada `app/usecase` terpisah** dari `app/service`. Aturan murni (`ValidateCreate`, `ApplyPatch`, `CountTotalPages`) tetap dipisah di `user_rules.go` agar bisa di-unit-test tanpa HTTP, tetapi orkestrasi use case hidup di `user_service.go`.
-- **DTO tidak sepenuhnya terpisah dari entitas.** `CreateStudentRequest`, `ReplaceStudentRequest`, `PatchStudentRequest` hidup di `app/model` bersama entitas `Student`. Pada Clean Architecture murni, DTO masuk layer Interface Adapter.
-- **Error tidak dibungkus dengan error code domain**. Service menerjemahkan error repository langsung ke status HTTP pada helper `translateError` (terletak di `user_service.go`).
+#### Request
 
-#### Apakah struktur ini sepadan, dan mulai dari ukuran apa?
-
-Untuk requirement praktikum ini (6 endpoint CRUD + health + 1 entitas), struktur ini **sepadan** karena biaya setupnya kecil (cukup membagi 13 file ke 4 paket) namun langsung mendapatkan tiga hal: **bisa di-unit-test tanpa basis data** (`app/service` tidak bergantung pada pgx/fiber secara langsung ketika aturan dipanggil lewat `user_rules.go`), **bisa mengganti driver basis data** dengan mengimplementasi ulang `repository.StudentRepository`, dan **bisa mengganti web framework** dengan membuat `*service.StudentService` menerima interface, bukan `*fiber.Ctx`.
-
-**Mulai sepadan ketika:** ada lebih dari satu *use case* kompleks (mis. upload + processing), ada lebih dari satu driver basis data atau lebih dari satu klien (HTTP, gRPC, CLI), atau ketika anggota tim mulai bertambah dan jelas pembagian layer mempercepat code review. Sebagai patokan kasar: ≥ 3 entitas, ≥ 10 use case, atau perlu mengganti driver lebih dari satu kali — pada titik itu setiap layer tambahan menghemat lebih banyak waktu daripada biaya setupnya.
-
-**Konsekuensi struktur ini:**
-
-| Konsekuensi (positif)                                                   | Konsekuensi (negatif)                                                          |
-|-------------------------------------------------------------------------|--------------------------------------------------------------------------------|
-| Modul `app/service` & `app/repository` **tidak bergantung** pada `main.go` atau routing tertentu — bisa diuji dan diganti. | `app/service` masih mengimpor `github.com/gofiber/fiber/v2` karena `*fiber.Ctx` dipakai langsung; mengganti framework = edit semua method di `user_service.go`. |
-| `app/model` **tidak bergantung** pada apa pun dari proyek — bisa dipakai ulang oleh CLI, gRPC, atau test harness. | Ada satu layer yang digabung (service + handler); pemula bisa bingung apakah aturan HTTP (status code) termasuk "business rules". |
-| `helper` & `config` berdiri sendiri, mudah di-stub saat testing.          | Dead code (`handler.go` & `helper.go` di root) menambah kebisingan; perlu dihapus agar struktur tetap bersih. |
-
----
-
-## 2. Skema Basis Data & Migrasi
-
-Berkas migrasi: [students_api/migrations/001_create_students.sql](students_api/migrations/001_create_students.sql).
-
-### 2.1 Skema Tabel `users`
-
-| Kolom        | Tipe             | Constraint                          | Keterangan                                  |
-|--------------|------------------|-------------------------------------|---------------------------------------------|
-| `id`         | `SERIAL`         | `PRIMARY KEY`                       | Auto-increment oleh PostgreSQL              |
-| `username`   | `VARCHAR(50)`    | `NOT NULL`                          | Nama pengguna                               |
-| `email`      | `VARCHAR(255)`   | `NOT NULL`                          | Alamat email                                |
-| `password`   | `VARCHAR(255)`   | `NOT NULL`                          | Disimpan sebagai hash pada praktikum lanjut |
-| `is_active`  | `BOOLEAN`        | `NOT NULL DEFAULT TRUE`             | Status aktif                                |
-| `created_at` | `TIMESTAMPTZ`    | `NOT NULL DEFAULT NOW()`            | Timestamp pembuatan otomatis                |
-
-### 2.2 Indeks
-
-| Nama indeks                          | Tipe             | Kolom                  | Tujuan                                                                |
-|--------------------------------------|------------------|------------------------|-----------------------------------------------------------------------|
-| `users_pkey`                         | Primary Key      | `id`                   | Search by id                                                          |
-| `users_username_lower_key` (UNIQUE)  | B-tree unik      | `LOWER(username)`      | Menjamin keunikan tanpa membedakan huruf besar/kecil                  |
-| `users_email_lower_idx`              | B-tree           | `LOWER(email)`         | Mempercepat search case-insensitive pada email                       |
-
-### 2.3 Skrip Migrasi Lengkap
-
-```sql
--- students_api/migrations/001_create_students.sql
-CREATE TABLE IF NOT EXISTS users (
-    id         SERIAL PRIMARY KEY,
-    username   VARCHAR(50)  NOT NULL,
-    email      VARCHAR(255) NOT NULL,
-    password   VARCHAR(255) NOT NULL,
-    is_active  BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
--- Keunikan username tanpa membedakan huruf besar dan kecil.
--- Inilah yang menggantikan pemeriksaan manual di pertemuan 2.
-CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_key
-    ON users (LOWER(username));
-
-CREATE INDEX IF NOT EXISTS users_email_lower_idx
-    ON users (LOWER(email));
+```
+GET /api/v1/students/
+Authorization: Bearer <tokenUser>
 ```
 
-### 2.4 Konfigurasi Koneksi
+#### Screenshot pengujian
 
-Contoh `.env`:
+[[image placeholder]]
 
-```env
-APP_PORT=3000
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=rahasia
-DB_NAME=praktikum_backend
-DB_SSLMODE=disable
-DB_MAX_CONNS=10
+### ** 4. GET — /students/:id diri sendiri (admin/staff/user)**
+
+#### Request
+
+```
+GET /api/v1/students/1
+Authorization: Bearer <tokenAdmin>
 ```
 
-Potongan kode `database/postgres.go`:
+(Untuk peran staff gunakan id=2, untuk peran user gunakan id=3.)
 
-```go
-dsn := fmt.Sprintf(
-    "postgres://%s:%s@%s:%s/%s?sslmode=%s",
-    config.GetEnv("DB_USER",     "postgres"),
-    config.GetEnv("DB_PASSWORD", ""),
-    config.GetEnv("DB_HOST",     "localhost"),
-    config.GetEnv("DB_PORT",     "5432"),
-    config.GetEnv("DB_NAME",     "praktikum_backend"),
-    config.GetEnv("DB_SSLMODE",  "disable"),
-)
-cfg, err := pgxpool.ParseConfig(dsn)
-cfg.MaxConns          = int32(config.GetEnvInt("DB_MAX_CONNS", 10))
-cfg.MinConns          = 2
-cfg.MaxConnLifetime   = time.Hour
-cfg.MaxConnIdleTime   = 30 * time.Minute
-pool, err := pgxpool.NewWithConfig(ctx, cfg)
-if err := pool.Ping(pingCtx); err != nil { /* fatal */ }
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+### ** 5. GET — /students/:id milik orang lain (admin)**
+
+#### Request
+
+```
+GET /api/v1/students/2
+Authorization: Bearer <tokenAdmin>
 ```
 
-### 2.5 Penjelasan Singkat
+#### Screenshot pengujian
 
-- **`SERIAL`** menyerahkan pembuatan id ke PostgreSQL sehingga tidak ada `nextID++` di Go lagi.
-- **`UNIQUE INDEX ... LOWER(username)`** menjamin tidak ada dua user dengan username identik secara case-insensitive, sehingga aplikasi tidak perlu query `SELECT` tambahan sebelum `INSERT` — INSERT langsung gagal dengan kode error PostgreSQL `23505`.
-- **`pgxpool`** mengelola banyak koneksi sekaligus; query yang lambat tidak saling menunggu.
-- **`pool.Ping()`** saat start-up memvalidasi kredensial sebelum server menerima permintaan pertama.
-- **`RETURNING id, created_at`** pada `INSERT`/`UPDATE` me-return nilai yang dibuat database dalam satu perjalanan, tanpa perlu query kedua.
+[[image placeholder]]
 
-### 2.6 Password: Mengapa Nilai Asli Tidak Dapat Diselamatkan
+### ** 6. GET — /students/:id milik orang lain (staff)**
 
-Kolom `users.password` di skema di atas **tidak pernah berisi nilai asli** yang dikirimkan oleh klien. Pada saat `AuthService.Register` (lihat [app/service/auth_service.go](students_api/app/service/auth_service.go)) menerima `req.Password`, ia langsung memanggil `helper.HashPassword` yang merupakan bcrypt dengan cost 12 — lihat blok berikut:
+#### Request
 
-```go
-// helper/security.go
-const bcryptCost = 12
-
-func HashPassword(plain string) (string, error) {
-    hashed, err := bcrypt.GenerateFromPassword([]byte(plain), bcryptCost)
-    if err != nil { return "", err }
-    return string(hashed), nil
-}
+```
+GET /api/v1/students/3
+Authorization: Bearer <tokenStaff>
 ```
 
-Karena bcrypt adalah **fungsi searah yang bersifat one-way**, tidak ada jalan komputasi untuk mengembalikan plaintext dari hash yang sudah ada. Dengan kata lain: sejak pertama kali seorang pengguna terdaftar, hash adalah satu-satunya catatan yang tersedia. Konsekuensinya:
+#### Screenshot pengujian
 
-- **Tidak ada "kirim ulang password lama" lewat email.** Layanan tidak punya akses ke plaintext, sehingga tidak ada yang bisa dikirim.
-- **Tidak ada admin backdoor.** Bahkan operator basis data yang memiliki akses penuh ke tabel `users` hanya melihat hash; membalik hash dengan brute force pada tahun 2026 membutuhkan sumber daya yang tidak realistis untuk satu bcrypt cost-12 (lihat alasan pemilihan cost di bawah).
-- **Pemulihan hanya terjadi melalui reset.** Pengguna yang kehilangan password harus membuktikan kepemilikan email (melalui alur "lupa password" terpisah yang tidak diuji di sini) dan menetapkan password baru yang akan di-hash ulang dengan salt acak baru.
+[[image placeholder]]
 
-**Implikasi praktis untuk aturan validasi di [app/service/auth_rules.go](students_api/app/service/auth_rules.go):** karena password lama dibuat dengan aturan yang mungkin sudah lebih longgar (mis. minimum 6 karakter, tanpa wajib huruf+angka), maka `ValidateLogin` sengaja **tidak** memeriksa kekuatan sandi — ia hanya memastikan field terisi. Bila ValidateLogin menolak sandi lemah, semua akun lama akan langsung **terkunci keluar** (lockout massal) ketika aturan `checkPasswordStrength` diperketat. Pemisahan aturan "kekuatan untuk akun baru" vs "kelengkapan untuk login" adalah tindakan pencegahan langsung dari kenyataan bahwa **password lama tidak dapat diselamatkan**.
+### ** 7. GET — /students/:id milik orang lain (user)**
 
-**Mengapa tidak algoritma lain?** bcrypt dipilih di atas Argon2id karena:
+#### Request
 
-1. Implementasi `golang.org/x/crypto/bcrypt` adalah stabil, diaudit luas, dan tanpa catatan CVE serius.
-2. Bcrypt memiliki *salt* acak internal (16 byte) sehingga dua pengguna dengan password identik tetap memiliki hash berbeda — tahan terhadap rainbow table.
-3. Cost factor adalah parameter konstan tunggal yang mudah dijelaskan kepada dosen dan tim; Argon2id memerlukan tiga parameter (memory, iterations, parallelism) yang masing-masing punya efek non-linear pada keamanan.
+```
+GET /api/v1/students/1
+Authorization: Bearer <tokenUser>
+```
 
-### 2.7 Pemilihan bcrypt Cost = 12
+#### Screenshot pengujian
 
-Nilai `bcryptCost = 12` di atas bukanlah angka random. Ia dipilih dengan kompromi eksplisit:
+[[image placeholder]]
 
-| Cost | Perkiraan waktu per hash (mesin umum 2026) | Komentar                                 |
-|-----:|--------------------------------------------|------------------------------------------|
-| 10   | ~80 ms                                      | Terlalu cepat; penyerang bisa brute force miliaran kandidat per hari pada satu GPU. |
-| 12   | ~250 ms                                     | **Default yang dipakai di sini.** Satu login pengguna menunggu ~0,25 detik; satu percobaan brute force memakan biaya yang sama. |
-| 14   | ~1 detik                                    | Aman, tetapi CPU server menjadi bottleneck saat jam sibuk. |
+### ** 8. PUT — /students/:id milik orang lain (admin)**
 
-Karena domain praktikum ini tidak menerima ribuan login per detik, tambahan 250 ms per permintaan masih dapat diterima. Di sisi lain, seorang penyerang yang membobol basis data harus menebak bcrypt cost-12 satu-satu — lajunya turun drastis. Inilah alasan angka 12 dipilih: **perlindungan terhadap kebocoran basis data** lebih relevan daripada throughput tinggi, karena password disimpan tidak hanya di server kami tetapi juga akan dibandingkan satu per satu bila basis data bocor ke publik.
+#### Request
 
-Server meng-handshake dengan `pool.Ping()` saat start-up yang sudah selesai, sehingga startup tidak sensitif terhadap tambahan waktu hash (hash hanya terjadi pada register/login, bukan pada setiap request). Nilai cost dapat dinaikkan di kemudian hari dengan cara menaikkan seluruh basis data secara background migration — tanpa mempengaruhi user experience untuk password yang sudah disimpan, karena field hash sudah berisi cost factor-nya masing-masing (mis. awalan `$2a$12$...`).
-
----
-
-## 3. Testing Endpoint
-
-Setiap skenario di bawah menampilkan tiga hal: (1) **request** aktual yang dikirim, (2) **snippet kode yang di-highlight** — diambil dari service layer (pp/service/), rule (pp/service/user_rules.go), atau repository (pp/repository/user_repository.go), dan (3) **penjelasan** singkat tentang status HTTP dan perilaku kode.
-
-> Path telah diubah dari /api/v1/users (versi repository langsung) menjadi /api/v1/students setelah refactor menjadi Clean Architecture. Service menambahkan IsActive: true default untuk Create, sehingga field is_active tidak perlu dikirim.
-
-### 3.1 POST — Membuat Student Baru
-
-**Permintaan**
-
-```http
-POST /api/v1/students
+```
+PUT /api/v1/students/2
+Authorization: Bearer <tokenAdmin>
 Content-Type: application/json
 
 {
-  "username": "johndoe",
-  "email": "john@example.com",
-  "password": "rahasia123"
-}
-```
-
-**Snippet kode yang di-highlight**
-
-```go
-// route/route.go — route mendaftarkan service method langsung
-students.Post("/", studentService.Create)
-
-// app/service/user_service.go — StudentService.Create (use case + handler)
-func (s *StudentService) Create(c *fiber.Ctx) error {
-    ctx, cancel := helper.RequestContext(c)
-    defer cancel()
-    var req model.CreateStudentRequest
-    if err := c.BodyParser(&req); err != nil {
-        return helper.Fail(c, fiber.StatusBadRequest,
-            "body harus berupa JSON yang valid")
-    }
-    if errs := ValidateCreate(req); len(errs) > 0 {
-        return helper.FailValidation(c, errs)
-    }
-    newUser, err := s.repo.Create(ctx, model.Student{
-        Username: req.Username,
-        Email:    req.Email,
-        Password: req.Password,
-        IsActive: true,
-    })
-    if err != nil {
-        return translateError(c, err, err.Error())
-    }
-    return helper.Created(c, "student berhasil dibuat", newUser,
-        "/api/v1/students/"+strconv.Itoa(newUser.ID))
-}
-
-// app/service/user_rules.go — ValidateCreate dipisah agar bisa di-unit-test
-func ValidateCreate(req model.CreateStudentRequest) map[string]string {
-    errs := map[string]string{}
-    if strings.TrimSpace(req.Username) == "" { errs["username"] = "wajib diisi" }
-    if !isValidEmail(req.Email)              { errs["email"]    = "format email tidak valid" }
-    if len(req.Password) < 8                { errs["password"] = "minimal 8 karakter" }
-    return errs
-}
-
-// app/repository/user_repository.go — INSERT parameterized dengan RETURNING
-err := r.pool.QueryRow(ctx,
-    INSERT INTO users (username, email, password, is_active)
-     VALUES (, , , )
-     RETURNING id, created_at,
-    u.Username, u.Email, u.Password, u.IsActive,
-).Scan(&u.ID, &u.CreatedAt)
-if isUniqueViolation(err) {
-    return model.Student{}, ErrDuplicate
-}
-```
-
-**Screenshot pengujian**
-
-> ðŸ“· *[Screenshots: 01_post_create_success.png — paste Postman screenshot showing 201 Created here]*
-
-**Penjelasan:** Server me-return status **201 Created** saat student berhasil disimpan ke PostgreSQL. Header Location berisi URL resource baru (/api/v1/students/1). Validasi input terjadi di ValidateCreate sebelum query dieksekusi; pelanggaran UNIQUE INDEX users_username_lower_key akan di-return sebagai ErrDuplicate â†’ **409 Conflict**. id di-generate oleh SERIAL PostgreSQL dan created_at di-RETURNING bersamaan dengan INSERT, sehingga hanya satu perjalanan ke database.
-
----
-
-### 3.2 POST — Tambah Student Kedua dan Ketiga
-
-**Permintaan**
-
-```http
-POST /api/v1/students
-{ "username": "andini", "email": "andini@example.com", "password": "rahasia123" }
-
-POST /api/v1/students
-{ "username": "budi_s", "email": "budi@example.com", "password": "rahasia123" }
-```
-
-**Snippet kode yang di-highlight**
-
-```go
-// route/route.go — satu endpoint yang sama, dipanggil berulang
-students.Post("/", studentService.Create)
-```
-
-**Screenshot pengujian**
-
-> ðŸ“· *[Screenshots: 02a_post_create_andini.png — paste screenshot showing 201 Created for student ke-2 here]*
-
-> ðŸ“· *[Screenshots: 02b_post_create_budi.png — paste screenshot showing 201 Created for student ke-3 here]*
-
-**Penjelasan:** Kedua permintaan me-return **201 Created**. Setelah tiga kali INSERT, tabel users berisi 3 baris dengan id 1, 2, dan 3 yang dibuat otomatis oleh PostgreSQL.
-
----
-
-### 3.3 GET — Pagination dan Sorting
-
-**Permintaan**
-
-```http
-GET /api/v1/students?page=1&limit=2&sort=username&order=desc
-```
-
-**Snippet kode yang di-highlight**
-
-```go
-// helper/request.go — ParseListQuery normalisasi input + whitelist sort
-func ParseListQuery(c *fiber.Ctx) model.ListQuery {
-    q := model.ListQuery{
-        Page:   c.QueryInt("page", 1),
-        Limit:  c.QueryInt("limit", 10),
-        Search: strings.TrimSpace(c.Query("search")),
-        Sort:   c.Query("sort", "id"),
-        Order:  strings.ToLower(c.Query("order", "asc")),
-    }
-    if q.Limit > 100 { q.Limit = 100 }
-    if !allowedSort[q.Sort] { q.Sort = "id" }
-    if q.Order != "desc" { q.Order = "asc" }
-    return q
-}
-
-// app/repository/user_repository.go — studentPostgresRepository.FindAll
-where, args := buildFilter(q)
-
-// (1) Hitung total sebelum dipenggal
-var total int
-err := r.pool.QueryRow(ctx,
-    "SELECT COUNT(*) FROM users"+where, args...).Scan(&total)
-
-// (2) Ambil satu halaman dari basis data
-arah := "ASC"
-if q.Order == "desc" { arah = "DESC" }
-sqlText := fmt.Sprintf(
-    SELECT id, username, email, password, is_active, created_at
-     FROM users%s
-     ORDER BY %s %s
-     LIMIT $%d OFFSET $%d,
-    where, kolomUrut[q.Sort], arah, len(args)+1, len(args)+2,
-)
-args = append(args, q.Limit, q.Offset())
-```
-
-**Screenshot pengujian**
-
-> ðŸ“· *[Screenshots: 03_get_pagination_sort.png — paste Postman screenshot showing 200 OK here]*
-
-**Penjelasan:** Status **200 OK**. Filtering (WHERE), sorting (ORDER BY) dan paging (LIMIT/OFFSET) seluruhnya dijalankan PostgreSQL — bukan di slice Go. Whitelist kolomUrut (di repository) & llowedSort (di helper) menutup jalan injection pada ORDER BY. Total baris (	otal) dihitung via COUNT(*) terpisah untuk isi meta. CountTotalPages di user_rules.go dipakai pada service untuk mengisi 	otal_pages.
-
----
-
-### 3.4 GET — Search dan Filter
-
-**Permintaan**
-
-```http
-GET /api/v1/students?search=an&is_active=true
-```
-
-**Snippet kode yang di-highlight**
-
-```go
-// app/repository/user_repository.go — buildFilter (parameterized)
-if q.Search != "" {
-    where += fmt.Sprintf(
-        " AND (username ILIKE $%d OR email ILIKE $%d)",
-        len(args)+1, len(args)+1)
-    args = append(args, "%"+q.Search+"%")
-}
-if q.IsActive != nil {
-    where += fmt.Sprintf(" AND is_active = $%d", len(args)+1)
-    args = append(args, *q.IsActive)
-}
-```
-
-**Screenshot pengujian**
-
-> ðŸ“· *[Screenshots: 04_get_search_filter.png — paste Postman screenshot showing 200 OK here]*
-
-**Penjelasan:** Status **200 OK**. Search substring n dipakai pada klausa ILIKE (case-insensitive), sehingga cocok pada username ndini maupun email yang memuat substring n. Filter is_active = TRUE ditambahkan sebagai parameter terpisah — tidak pernah disambung ke teks SQL secara langsung.
-
----
-
-### 3.5 PUT — Replace Student (Seluruh Field Wajib)
-
-**Permintaan**
-
-```http
-PUT /api/v1/students/1
-Content-Type: application/json
-
-{
-  "username": "john_baru",
-  "email": "jb@example.com",
-  "is_active": false
-}
-```
-
-**Snippet kode yang di-highlight**
-
-```go
-// app/service/user_service.go — StudentService.Replace
-func (s *StudentService) Replace(c *fiber.Ctx) error {
-    ctx, cancel := helper.RequestContext(c)
-    defer cancel()
-    id, valid := helper.ParamID(c)
-    if !valid {
-        return helper.Fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
-    }
-    var req model.ReplaceStudentRequest
-    if err := c.BodyParser(&req); err != nil {
-        return helper.Fail(c, fiber.StatusBadRequest, "body harus berupa JSON yang valid")
-    }
-    if errs := ValidateReplace(req); len(errs) > 0 {
-        return helper.FailValidation(c, errs)
-    }
-    result, err := s.repo.Update(ctx, model.Student{
-        ID:       id,
-        Username: strings.TrimSpace(req.Username),
-        Email:    strings.TrimSpace(req.Email),
-        IsActive: req.IsActive,
-    })
-    if err != nil { return translateError(c, err, "gagal memperbarui student") }
-    return helper.Success(c, fiber.StatusOK, "student berhasil diganti seluruhnya", result)
-}
-
-// app/repository/user_repository.go — Update dengan RETURNING (semua kolom)
-err := r.pool.QueryRow(ctx,
-    UPDATE users SET username = , email = , is_active = 
-     WHERE id = 
-     RETURNING id, username, email, password, is_active, created_at,
-    u.Username, u.Email, u.IsActive, u.ID,
-).Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.IsActive, &u.CreatedAt)
-if errors.Is(err, pgx.ErrNoRows)  { return model.Student{}, ErrNotFound }
-if isUniqueViolation(err)         { return model.Student{}, ErrDuplicate }
-```
-
-**Screenshot pengujian**
-
-> ðŸ“· *[Screenshots: 05_put_replace_success.png — paste Postman screenshot showing 200 OK here]*
-
-**Penjelasan:** Status **200 OK**. PUT menggantikan seluruh field pada baris dengan id 1 menggunakan satu UPDATE ... RETURNING. Baris yang di-return PostgreSQL menyertakan kembali created_at sehingga field yang tidak ikut diubah tetap benar.
-
----
-
-### 3.6 PUT — Validasi Gagal (Tanpa Email)
-
-**Permintaan**
-
-```http
-PUT /api/v1/students/1
-Content-Type: application/json
-
-{
-  "username": "john_baru"
-}
-```
-
-**Snippet kode yang di-highlight**
-
-```go
-// app/service/user_rules.go — ValidateReplace adalah pure function
-func ValidateReplace(req model.ReplaceStudentRequest) map[string]string {
-    errs := map[string]string{}
-    if strings.TrimSpace(req.Username) == "" {
-        errs["username"] = "wajib diisi pada PUT"
-    }
-    if !isValidEmail(req.Email) {
-        errs["email"] = "wajib diisi dan berformat email pada PUT"
-    }
-    return errs
-}
-
-// helper/response.go — FailValidation â†’ 422
-func FailValidation(c *fiber.Ctx, errs map[string]string) error {
-    return c.Status(fiber.StatusUnprocessableEntity).JSON(model.WebResponse{
-        Success: false, Message: "validasi gagal", Errors: errs,
-    })
-}
-```
-
-**Screenshot pengujian**
-
-> ðŸ“· *[Screenshots: 06_put_validation_422.png — paste Postman screenshot showing 422 Unprocessable Entity here]*
-
-**Penjelasan:** Status **422 Unprocessable Entity**. ValidateReplace mengembalikan errs["email"] sebelum s.repo.Update dipanggil, sehingga tidak ada UPDATE yang dikirim ke PostgreSQL. Respons memuat objek errors dengan key email. Karena ValidateReplace adalah pure function, perilakunya dapat diuji tanpa HTTP — lihat seksi 6.
-
----
-
-### 3.7 PATCH — Update Sebagian (is_active)
-
-**Permintaan**
-
-```http
-PATCH /api/v1/students/1
-Content-Type: application/json
-
-{
+  "username": "staff_updated",
+  "email": "staff_new@unair.ac.id",
   "is_active": true
 }
 ```
 
-**Snippet kode yang di-highlight**
+#### Screenshot pengujian
 
-```go
-// app/service/user_service.go — StudentService.Patch (baca â†’ gabung â†’ simpan)
-func (s *StudentService) Patch(c *fiber.Ctx) error {
-    ctx, cancel := helper.RequestContext(c)
-    defer cancel()
-    id, valid := helper.ParamID(c)
-    if !valid { /* ... */ }
-    var req model.PatchStudentRequest
-    if err := c.BodyParser(&req); err != nil { /* ... */ }
-    if IsEmptyPatch(req) {
-        return helper.Fail(c, fiber.StatusBadRequest, "tidak ada field yang diubah")
-    }
-    current, err := s.repo.FindByID(ctx, id)
-    if err != nil { return translateError(c, err, "gagal mengambil data student") }
-    updated, errs := ApplyPatch(current, req)
-    if len(errs) > 0 { return helper.FailValidation(c, errs) }
-    result, err := s.repo.Update(ctx, updated)
-    if err != nil { return translateError(c, err, "gagal memperbarui student") }
-    return helper.Success(c, fiber.StatusOK, "student berhasil diperbarui sebagian", result)
-}
+[[image placeholder]]
 
-// app/service/user_rules.go — ApplyPatch (pure, di-unit-test)
-func ApplyPatch(current model.Student, req model.PatchStudentRequest,
-) (model.Student, map[string]string) {
-    errs := map[string]string{}
-    if req.Username != nil {
-        if strings.TrimSpace(*req.Username) == "" {
-            errs["username"] = "tidak boleh kosong"
-        } else {
-            current.Username = *req.Username
-        }
-    }
-    if req.Email != nil {
-        if !isValidEmail(*req.Email) {
-            errs["email"] = "format email tidak valid"
-        } else {
-            current.Email = *req.Email
-        }
-    }
-    if req.IsActive != nil {
-        current.IsActive = *req.IsActive
-    }
-    return current, errs
+### ** 9. PUT — /students/:id milik orang lain (staff)**
+
+#### Request
+
+```
+PUT /api/v1/students/1
+Authorization: Bearer <tokenStaff>
+Content-Type: application/json
+
+{
+  "username": "admin_updated",
+  "email": "admin_new@unair.ac.id",
+  "is_active": true
 }
 ```
 
-**Screenshot pengujian**
+#### Screenshot pengujian
 
-> ðŸ“· *[Screenshots: 07_patch_partial.png — paste Postman screenshot showing 200 OK here]*
+[[image placeholder]]
 
-**Penjelasan:** Status **200 OK**. PATCH membaca baris utuh dengan FindByID, lalu ApplyPatch (pure function) menggabungkan field yang dikirim ke salinan current. Repository hanya butuh satu metode Update; perbedaan PUT/PATCH diputuskan di service. IsEmptyPatch mengembalikan 400 bila body kosong.
+### ** 10. PUT — /students/:id milik orang lain (user)**
 
----
+#### Request
 
-### 3.8 POST — Tanpa Content-Type
+```
+PUT /api/v1/students/1
+Authorization: Bearer <tokenUser>
+Content-Type: application/json
 
-**Permintaan**
-
-```http
-POST /api/v1/students   (tanpa header Content-Type)
-Body: {"username":"x"}
+{
+  "username": "user_updated",
+  "email": "user_new@unair.ac.id",
+  "is_active": true
+}
 ```
 
-**Snippet kode yang di-highlight**
+#### Screenshot pengujian
 
-```go
-// middleware/middleware.go — RequireJSON dipasang pada grup /students
-var methodsWithBody = map[string]bool{
-    fiber.MethodPost:  true,
-    fiber.MethodPut:   true,
-    fiber.MethodPatch: true,
-}
+[[image placeholder]]
 
-func RequireJSON(c *fiber.Ctx) error {
-    if methodsWithBody[c.Method()] {
-        ct := c.Get("Content-Type")
-        if !strings.HasPrefix(ct, fiber.MIMEApplicationJSON) {
-            return helper.Fail(c, fiber.StatusUnsupportedMediaType,
-                "Content-Type harus application/json")
-        }
-    }
-    return c.Next()
-}
+### ** 11. DELETE — /students/:id milik orang lain (admin)**
 
-// route/route.go — middleware diterapkan pada grup, bukan per-method
-students := api.Group("/students", middleware.RequireJSON)
+#### Request
+
 ```
-
-**Screenshot pengujian**
-
-> ðŸ“· *[Screenshots: 08_post_no_content_type.png — paste Postman screenshot showing 415 Unsupported Media Type here]*
-
-**Penjelasan:** Status **415 Unsupported Media Type**. Middleware RequireJSON menolak permintaan sebelum sampai ke StudentService.Create atau bahkan repository — koneksi database tidak terpakai sia-sia.
-
----
-
-### 3.9 DELETE — Hapus Student
-
-**Permintaan**
-
-```http
 DELETE /api/v1/students/2
+Authorization: Bearer <tokenAdmin>
 ```
 
-**Snippet kode yang di-highlight**
+#### Screenshot pengujian
 
-```go
-// app/service/user_service.go — StudentService.Delete
-func (s *StudentService) Delete(c *fiber.Ctx) error {
-    ctx, cancel := helper.RequestContext(c)
-    defer cancel()
-    id, valid := helper.ParamID(c)
-    if !valid {
-        return helper.Fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
-    }
-    if err := s.repo.Delete(ctx, id); err != nil {
-        return translateError(c, err, "gagal menghapus student")
-    }
-    return helper.NoContent(c)
-}
+[[image placeholder]]
 
-// app/repository/user_repository.go — studentPostgresRepository.Delete
-tag, err := r.pool.Exec(ctx, DELETE FROM users WHERE id = , id)
-if err != nil { return fmt.Errorf("menghapus student: %w", err) }
-if tag.RowsAffected() == 0 { return ErrNotFound }
-return nil
+### ** 12. DELETE — /students/:id milik orang lain (staff)**
+
+#### Request
+
+```
+DELETE /api/v1/students/1
+Authorization: Bearer <tokenStaff>
 ```
 
-**Screenshot pengujian**
+#### Screenshot pengujian
 
-> ðŸ“· *[Screenshots: 09_delete_success.png — paste Postman screenshot showing 204 No Content here]*
+[[image placeholder]]
 
-**Penjelasan:** Status **204 No Content**. Exec me-return 	ag.RowsAffected() — bila 0 berarti id memang tidak ada dan repository menerjemahkannya menjadi ErrNotFound (status 404), bukan false positive "berhasil".
+### ** 13. DELETE — /students/:id milik orang lain (user)**
 
----
+#### Request
 
-### 3.10 Auth — POST `/api/v1/auth/register`
+```
+DELETE /api/v1/students/1
+Authorization: Bearer <tokenUser>
+```
 
-**Permintaan**
+#### Screenshot pengujian
 
-```http
-POST /api/v1/auth/register
+[[image placeholder]]
+
+### ** 14. DELETE — /students/:id diri sendiri (admin)**
+
+#### Request
+
+```
+DELETE /api/v1/students/1
+Authorization: Bearer <tokenAdmin>
+```
+
+(Untuk peran staff gunakan id=2, untuk peran user gunakan id=3.)
+
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+### ** 15. PATCH — /students/:id/role milik orang lain (admin)**
+
+#### Request
+
+```
+PATCH /api/v1/students/3/role
+Authorization: Bearer <tokenAdmin>
 Content-Type: application/json
 
 {
-  "username": "newcomer",
-  "email": "newcomer@example.com",
-  "password": "rahasia123"
+  "role": "staff"
 }
 ```
 
-**Snippet kode yang di-highlight**
+#### Screenshot pengujian
 
-```go
-// route/route.go — grup /auth dipasang di bawah /api/v1
-auth := api.Group("/auth", middleware.RequireJSON)
-auth.Post("/register", deps.AuthService.Register)
+[[image placeholder]]
 
-// app/service/auth_service.go — Register menerima, validasi, hash, simpan
-func (s *AuthService) Register(c *fiber.Ctx) error {
-    var req model.RegisterRequest
-    if err := c.BodyParser(&req); err != nil { /* 400 */ }
-    req.Username = strings.TrimSpace(req.Username)
-    req.Email    = strings.TrimSpace(req.Email)
+### ** 16. PATCH — /students/:id/role milik orang lain (staff)**
 
-    if errs := ValidateRegister(req); len(errs) > 0 {
-        return helper.FailValidation(c, errs)        // 422
-    }
+#### Request
 
-    hashed, err := helper.HashPassword(req.Password) // bcrypt cost 12
-    if err != nil { return helper.Fail(c, 500, ...) }
-
-    // Perhatikan: Role TIDAK diambil dari request — selalu "user".
-    created, err := s.users.Create(ctx, model.Student{
-        Username: req.Username, Email: req.Email,
-        Password: hashed, Role: "user", IsActive: true,
-    })
-    if errors.Is(err, repository.ErrDuplicate) {
-        return helper.Fail(c, 409, "username sudah dipakai")
-    }
-    return helper.Created(c, "pendaftaran berhasil", created, ...)
-}
 ```
-
-**Screenshot pengujian**
-
-> 📷 *[Screenshots: 10_post_register.png — paste Postman screenshot showing 201 Created here]*
-
-**Penjelasan:** Status **201 Created** ketika pendaftaran berhasil. Validasi dilakukan murni di `ValidateRegister` (pure function, tanpa `*fiber.Ctx`) — lihat seksi 6 untuk unit test-nya. Password **di-hash sebelum menyentuh basis data**; nilai aslinya tidak pernah disimpan, tidak pernah di-log, dan tidak pernah dikembalikan dalam response body (lihat json:"-" pada `model.Student.Password`). Bila username sudah dipakai, status menjadi **409 Conflict** yang datang dari pelanggaran UNIQUE INDEX. Catatan penting: **field `role` sengaja tidak ada pada `RegisterRequest`** — bila ia ada, siapa pun dapat mengirim `{"role":"admin"}` dan menjadi administrator (kerentanan *mass assignment*).
-
----
-
-### 3.11 Auth — POST `/api/v1/auth/login`
-
-**Permintaan**
-
-```http
-POST /api/v1/auth/login
+PATCH /api/v1/students/1/role
+Authorization: Bearer <tokenStaff>
 Content-Type: application/json
 
 {
-  "username": "johndoe",
-  "password": "rahasia123"
+  "role": "admin"
 }
 ```
 
-**Snippet kode yang di-highlight**
+#### Screenshot pengujian
 
-```go
-// route/route.go — login mendapat rate limiter lokal agar brute force
-// terhadap endpoint ini tidak praktis.
-auth.Post("/login", middleware.LoginRateLimiter(), deps.AuthService.Login)
+[[image placeholder]]
 
-// app/service/auth_service.go — Login: cari user, verifikasi hash,
-// issue access + refresh token. Hash dicek dengan bcrypt.
-user, err := s.users.FindByUsername(ctx, strings.TrimSpace(req.Username))
-if err != nil {
-    helper.VerifyDummyPassword(req.Password) // samakan waktu respons
-    return helper.Fail(c, 401, "username atau password salah")
-}
-if !helper.VerifyPassword(user.Password, req.Password) {
-    return helper.Fail(c, 401, "username atau password salah")
-}
-if !user.IsActive {
-    return helper.Fail(c, 403, "akun dinonaktifkan")
-}
-pair, err := s.issueTokenPair(ctx, user)
+### ** 17. PATCH — /students/:id/role milik orang lain (user)**
+
+#### Request
+
 ```
-
-**Screenshot pengujian**
-
-> 📷 *[Screenshots: 11_post_login.png — paste Postman screenshot showing 200 OK with access_token + refresh_token here]*
-
-**Penjelasan:** Status **200 OK** ketika kredensial benar. Response berisi `TokenPair`: `access_token` (JWT, masa berlaku 15 menit — lihat env `JWT_ACCESS_TTL_MINUTES`), `refresh_token` (string acak 32 byte, masa berlaku 7 hari), `token_type: "Bearer"`, dan `expires_in` (detik). Pada kasus gagal, **username salah** dan **password salah** me-return **pesan identik** ("username atau password salah") dan status identik (401); perbedaan yang sengaja dibuat adalah pemanggilan `VerifyDummyPassword` ketika user tidak ditemukan — ini menyamakan waktu respons untuk meniadakan *timing attack* yang dapat membedakan mana username terdaftar. Akun yang dinonaktifkan (`is_active = false`) ditolak dengan status **403 Forbidden** agar pemakai tahu bahwa akun ada tetapi tidak berwenang.
-
----
-
-### 3.12 Auth — POST `/api/v1/auth/refresh`
-
-**Permintaan**
-
-```http
-POST /api/v1/auth/refresh
+PATCH /api/v1/students/1/role
+Authorization: Bearer <tokenUser>
 Content-Type: application/json
 
 {
-  "refresh_token": "abcdef0123456789..."
+  "role": "admin"
 }
 ```
 
-**Snippet kode yang di-highlight**
+#### Screenshot pengujian
 
-```go
-// app/service/auth_service.go — Refresh: rotasi token (token lama dicabut)
-hash := helper.SHA256Hex(req.RefreshToken)
+[[image placeholder]]
 
-stored, err := s.tokens.FindActive(ctx, hash)
-if err != nil {
-    return helper.Fail(c, 401, "refresh token tidak valid atau sudah kedaluwarsa")
-}
-user, err := s.users.FindByID(ctx, stored.UserID)
-if err != nil || !user.IsActive {
-    return helper.Fail(c, 401, "akun tidak dapat dipakai")
-}
+### ** 18. PATCH — /students/:id/role diri sendiri (admin)**
 
-// ROTASI: token lama langsung dicabut. Bila ia sempat dicuri, hanya
-// berguna satu kali sebelum rotasi pertama.
-if err := s.tokens.Revoke(ctx, hash); err != nil { /* 500 */ }
+#### Request
 
-pair, err := s.issueTokenPair(ctx, user)
 ```
-
-**Screenshot pengujian**
-
-> 📷 *[Screenshots: 12_post_refresh.png — paste Postman screenshot showing 200 OK with new token pair here]*
-
-**Penjelasan:** Status **200 OK** ketika refresh token valid, ditukar dengan **access token + refresh token yang baru**. Yang disimpan di basis data adalah **hash SHA-256** dari refresh token, bukan nilai aslinya — sehingga kebocoran tabel `refresh_tokens` tidak langsung berarti kebocoran token. Yang lebih penting adalah **rotasi**: refresh token lama dicabut pada saat yang sama dengan diterbitkannya yang baru. Ini berarti bila sebuah refresh token sempat dicuri, penyerang hanya memiliki satu kesempatan sebelum pemilik sah melakukan refresh dan mencabutnya. Refresh token yang sudah kedaluwarsa atau sudah dicabut me-return **401 Unauthorized**.
-
----
-
-### 3.13 Auth — POST `/api/v1/auth/logout`
-
-**Permintaan**
-
-```http
-POST /api/v1/auth/logout
+PATCH /api/v1/students/1/role
+Authorization: Bearer <tokenAdmin>
 Content-Type: application/json
 
 {
-  "refresh_token": "abcdef0123456789..."
+  "role": "staff"
 }
 ```
 
-**Snippet kode yang di-highlight**
+#### Screenshot pengujian
 
-```go
-// app/service/auth_service.go — Logout sengaja menghapus best-effort
-if strings.TrimSpace(req.RefreshToken) != "" {
-    _ = s.tokens.Revoke(ctx, helper.SHA256Hex(req.RefreshToken))
+[[image placeholder]]
+
+### ** 19. PATCH — /students/:id/role diri sendiri (staff)**
+
+#### Request
+
+```
+PATCH /api/v1/students/2/role
+Authorization: Bearer <tokenStaff>
+Content-Type: application/json
+
+{
+  "role": "admin"
 }
-return helper.Success(c, 200, "logout berhasil", nil)
 ```
 
-**Screenshot pengujian**
+#### Screenshot pengujian
 
-> 📷 *[Screenshots: 13_post_logout.png — paste Postman screenshot showing 200 OK here]*
+[[image placeholder]]
 
-**Penjelasan:** Status **200 OK** pada semua kasus, bahkan bila refresh token kosong atau tidak ditemukan di basis data. Ini disengaja: dari sudut pandang pemakai, logout harus selalu dianggap berhasil. Access token JWT yang sudah diterbitkan sebelumnya tidak dapat "dicabut kembali" tanpa menambah deny-list — implementasi ini hanya mencabut refresh token, sehingga access token masih berlaku sampai masa hidupnya habis (maks 15 menit). Untuk sistem yang membutuhkan revocation instan, tambahan Redis deny-list untuk `jti` akan diperlukan; untuk praktikum ini cukup rotasi refresh token.
+### ** 20. PATCH — /students/:id/role diri sendiri (user)**
+
+#### Request
+
+```
+PATCH /api/v1/students/3/role
+Authorization: Bearer <tokenUser>
+Content-Type: application/json
+
+{
+  "role": "admin"
+}
+```
+
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+### ** 21. Tanpa Authorization header — GET list (semua peran)**
+
+#### Request
+
+```
+GET /api/v1/students/
+```
+
+(Tidak ada header Authorization; response yang diharapkan adalah 401.)
+
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+### ** 22. Tanpa Authorization header — PUT (semua peran)**
+
+#### Request
+
+```
+PUT /api/v1/students/1
+Content-Type: application/json
+
+{
+  "username": "x",
+  "email": "x@example.com",
+  "is_active": true
+}
+```
+
+(Tidak ada header Authorization; response yang diharapkan adalah 401.)
+
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+### ** 23. Tanpa Authorization header — DELETE (semua peran)**
+
+#### Request
+
+```
+DELETE /api/v1/students/1
+```
+
+(Tidak ada header Authorization; response yang diharapkan adalah 401.)
+
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+### ** 24. Tanpa Authorization header — PATCH role (semua peran)**
+
+#### Request
+
+```
+PATCH /api/v1/students/1/role
+Content-Type: application/json
+
+{
+  "role": "staff"
+}
+```
+
+(Tidak ada header Authorization; response yang diharapkan adalah 401.)
+
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+### ** 25. GET — /students dengan token lama setelah role berubah (user lama)**
+
+#### Request
+
+```
+GET /api/v1/students/
+Authorization: Bearer <tokenUserLama>
+```
+
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+### ** 26. GET — /students setelah login ulang (user baru)**
+
+#### Request
+
+```
+GET /api/v1/students/
+Authorization: Bearer <tokenUserBaru>
+```
+
+#### Screenshot pengujian
+
+[[image placeholder]]
+
+## **2. Test Summary**
+
+
+| No  | Skenario                                               | Peran            | Expected | Actual | Hasil  |
+| --- | ------------------------------------------------------ | ---------------- | -------- | ------ | ------ |
+| R1  | GET /students (list)                                   | admin            | 200      | 200    | ✅Pass |
+| R1  | GET /students (list)                                   | staff            | 200      | 200    | ✅Pass |
+| R1  | GET /students (list)                                   | user             | 403      | 403    | ✅Pass |
+| R2  | GET /students/:id diri sendiri                         | admin/staff/user | 200      | 200    | ✅Pass |
+| R3  | GET /students/:id milik orang lain                     | admin            | 200      | 200    | ✅Pass |
+| R3  | GET /students/:id milik orang lain                     | staff            | 200      | 200    | ✅Pass |
+| R3  | GET /students/:id milik orang lain                     | user             | 403      | 403    | ✅Pass |
+| R4  | PUT /students/:id milik orang lain                     | admin            | 200      | 200    | ✅Pass |
+| R4  | PUT /students/:id milik orang lain                     | staff            | 403      | 403    | ✅Pass |
+| R4  | PUT /students/:id milik orang lain                     | user             | 403      | 403    | ✅Pass |
+| R5  | DELETE /students/:id milik orang lain                  | admin            | 204      | 204    | ✅Pass |
+| R5  | DELETE /students/:id milik orang lain                  | staff            | 403      | 403    | ✅Pass |
+| R5  | DELETE /students/:id milik orang lain                  | user             | 403      | 403    | ✅Pass |
+| R6  | DELETE /students/:id diri sendiri                      | admin/staff/user | 403      | 403    | ✅Pass |
+| R7  | PATCH /students/:id/role milik orang lain              | admin            | 200      | 200    | ✅Pass |
+| R7  | PATCH /students/:id/role milik orang lain              | staff            | 403      | 403    | ✅Pass |
+| R7  | PATCH /students/:id/role milik orang lain              | user             | 403      | 403    | ✅Pass |
+| R8  | PATCH /students/:id/role diri sendiri                  | admin            | 422      | 422    | ✅Pass |
+| R8  | PATCH /students/:id/role diri sendiri                  | staff            | 403      | 403    | ✅Pass |
+| R8  | PATCH /students/:id/role diri sendiri                  | user             | 403      | 403    | ✅Pass |
+| R9  | Tanpa Authorization header                             | semua peran      | 401      | 401    | ✅Pass |
+| R10 | GET dengan token lama setelah role berubah             | user (lama)      | 403      | 403    | ✅Pass |
+| R10 | GET setelah login ulang (token baru membawa role baru) | user (baru)      | 200      | 200    | ✅Pass |
 
 ---
 
-### 3.14 Auth — GET `/api/v1/auth/me`
+## **3. Additional Discussion **
 
-**Permintaan**
+### **3.1 Why not to authorize from middleware?**
 
-```http
-GET /api/v1/auth/me
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+Di `middleware/authz.go`, `RequirePermission` bekerja dengan **satu informasi saja**: peran dari token. Ia tidak tahu id baris data yang akan disentuh, karena id itu baru tersedia *setelah* Fiber memparsing path parameter `/students/:id` dan route handler mulai berjalan. Akibatnya, keputusan "user ini boleh menyentuh user id=N karena N == current.UserID" hanya bisa dibuat **setelah** id itu diketahui, yaitu di dalam service handler. Pada kode saya, pemeriksaannya duduk di `app/service/authz_rules.go`:
 
-**Snippet kode yang di-highlight**
-
-```go
-// middleware/middleware.go — RequireAuth membaca header Authorization,
-// mem-parse JWT, dan menyimpan AuthUser ke fiber.Locals.
-func RequireAuth(jwt *helper.JWTManager) fiber.Handler {
-    return func(c *fiber.Ctx) error {
-        h := c.Get("Authorization")
-        if !strings.HasPrefix(h, "Bearer ") { return 401 }
-        raw := strings.TrimPrefix(h, "Bearer ")
-        user, err := jwt.Parse(raw)
-        if err != nil { return 401 }
-        c.Locals(helper.LocalsAuthUser, user)
-        return c.Next()
+````go
+// filepath: students_api/app/service/authz_rules.go
+func CanAccessStudent(
+    current model.AuthUser,
+    targetID int,
+    perms *helper.PermissionSet,
+    anyPermission string,
+) bool {
+    if current.UserID == targetID {
+        return true
     }
+    return perms.Can(current.Role, anyPermission)
 }
+````
 
-// app/service/auth_service.go — Me membaca identitas dari locals, bukan
-// dari request body. Pemakai tidak perlu mengirim user_id sendiri.
-func (s *AuthService) Me(c *fiber.Ctx) error {
-    authUser, ok := helper.CurrentUser(c)
-    if !ok { return helper.Fail(c, 401, "belum terautentikasi") }
-    user, err := s.users.FindByID(ctx, authUser.UserID)
-    ...
+Dipanggil dari `app/service/user_service.go::Get`:
+
+````go
+// filepath: students_api/app/service/user_service.go
+// ...existing code...
+user, ok := helper.CurrentUser(c)
+if !ok {
+    return helper.Fail(c, fiber.StatusUnauthorized, "belum terautentikasi")
 }
-```
-
-**Screenshot pengujian**
-
-> 📷 *[Screenshots: 14_get_me.png — paste Postman screenshot showing 200 OK with current user profile here]*
-
-**Penjelasan:** Status **200 OK** ketika Authorization header berisi JWT yang valid dan belum kedaluwarsa. Endpoint ini me-return profil user yang sedang login (kecuali field `password` karena tag `json:"-"`). **Identitas dibaca dari `c.Locals`** yang diisi oleh middleware `RequireAuth` — klien tidak boleh mengirim `user_id` di body/URL karena server harus selalu menjadi sumber kebenaran. Tanpa header, atau dengan JWT yang sudah kedaluwarsa, middleware menolak dengan status **401 Unauthorized** sebelum handler sempat jalan; ini menghemat satu perjalanan ke basis data untuk permintaan yang sudah pasti gagal.
-
----
-## 4. Mapping Error Repository â‡„ HTTP
-
-| Sentinel error (repository) | Status HTTP | Sumber                                                                   |
-|-----------------------------|-------------|--------------------------------------------------------------------------|
-| ErrNotFound               | 404         | pgx.ErrNoRows atau RowsAffected() == 0                              |
-| ErrDuplicate              | 409 Conflict| pgconn.PgError dengan kode 23505 (pelanggaran UNIQUE)               |
-| error lain                  | 500         | Kesalahan internal server                                               |
-
-```go
-// app/service/user_service.go — translateError (dipindahkan dari handler.go)
-func translateError(c *fiber.Ctx, err error, generalMessage string) error {
-    switch {
-    case errors.Is(err, repository.ErrNotFound):
-        return helper.Fail(c, fiber.StatusNotFound, "student tidak ditemukan")
-    case errors.Is(err, repository.ErrDuplicate):
-        return helper.Fail(c, fiber.StatusConflict, "username sudah dipakai")
-    default:
-        return helper.Fail(c, fiber.StatusInternalServerError, generalMessage)
-    }
+id, valid := helper.ParamID(c)
+if !valid {
+    return helper.Fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
 }
-```
+if !CanAccessStudent(current, id, s.perms, "user:read:any") {
+    return helper.Fail(c, fiber.StatusForbidden,
+        "tidak berhak mengakses data user lain")
+}
+user, err := s.repo.FindByID(ctx, id)
+// ...existing code...
+````
 
-Perubahan penting dibanding versi in-memory: status 409 Conflict kini mungkin muncul ketika INSERT/UPDATE melanggar UNIQUE INDEX users_username_lower_key — sebelumnya versi in-memory hanya mengandalkan loop or _, u := range users.
+Kalau aturan "milik sendiri ATAU punya permission `:any`" itu dipaksakan ke middleware, middleware harus mengekstrak `c.Params("id")` sendiri dan menduplikasi logika pada **setiap** handler `/:id` (Get, Replace, Patch, Delete, AssignRole). Setiap titik duplikasi adalah potensi drift — handler `Get` mungkin memeriksa `current.UserID == id`, handler `Delete` kelupaan, dan celah keamanan terbuka tanpa terlihat.
 
-Catatan: fungsi 	erjemahkanError lama yang berada di handler.go (root) sudah tidak dipanggil lagi. Padanan modern-nya 	ranslateError sekarang menjadi **method private** pada pp/service/user_service.go karena ia mengakses 
-epository.ErrNotFound/ErrDuplicate yang merupakan pengetahuan internal service layer.
+Middleware yang **bisa** dipasang di route, dan memang sudah dipasang, adalah `RequirePermission(perms, "student:list")` pada `students.Get("/", …)`. Keputusan itu **tidak** bergantung pada id — "siapa yang boleh list?" adalah peran, bukan id. Itulah batasan yang jelas: **yang bergantung pada data → service; yang hanya bergantung pada peran → middleware**.
 
----
+### **3.2 Pemeriksaan akses route & service**
 
-## 5. Ringkasan Hasil Pengujian
+Risiko konkret: **inkonsistensi akibat drift permission string**. Route di `route/route.go` lulus permission seperti `"student:list"`, `"student:update:any"`, `"student:delete"`, `"role:assign"` ke `RequirePermission`. Service handler di `user_service.go` melewati `"user:read:any"` (lihat baris di atas) ke `CanAccessStudent`. Bila di kemudian hari seseorang mengubah `student:list` di route tetapi lupa memperbarui konstanta `user:read:any` di service (atau sebaliknya), akan ada dua jalur masuk: satu route yang langsung menerima (200), satu service yang menolak (403), untuk permintaan yang kelihatannya identik. Penyerang yang menemukan rute yang luput akan mendapat akses; pengguna sah yang kena rute yang salah akan terkunci.
 
-| No | Skenario                              | Status yang Diharapkan | Status Aktual | Hasil    |
-|----|---------------------------------------|------------------------|---------------|----------|
-| 1  | POST create student (valid)           | 201 Created            | 201 Created   | âœ… Lulus |
-| 2a | POST student tambahan 1               | 201 Created            | 201 Created   | âœ… Lulus |
-| 2b | POST student tambahan 2               | 201 Created            | 201 Created   | âœ… Lulus |
-| 3  | GET pagination & sort                 | 200 OK                 | 200 OK        | âœ… Lulus |
-| 4  | GET search & filter                   | 200 OK                 | 200 OK        | âœ… Lulus |
-| 5  | PUT replace (semua field valid)       | 200 OK                 | 200 OK        | âœ… Lulus |
-| 6  | PUT tanpa email                       | 422 Unprocessable      | 422 Unprocess.| âœ… Lulus |
-| 7  | PATCH sebagian (is_active)            | 200 OK                 | 200 OK        | âœ… Lulus |
-| 8  | POST tanpa Content-Type               | 415 Unsupported Media  | 415           | âœ… Lulus |
-| 9  | DELETE student                        | 204 No Content         | 204           | âœ… Lulus |
-| 10 | POST `/auth/register`                 | 201 Created            | 201 Created   | ✅ Lulus |
-| 11 | POST `/auth/login`                    | 200 OK + token pair    | 200 OK        | ✅ Lulus |
-| 12 | POST `/auth/refresh`                  | 200 OK + token pair    | 200 OK        | ✅ Lulus |
-| 13 | POST `/auth/logout`                   | 200 OK                 | 200 OK        | ✅ Lulus |
-| 14 | GET `/auth/me` (dengan JWT)           | 200 OK + profil        | 200 OK        | ✅ Lulus |
+Risiko ini berkurang karena saya memakai *typed wrapper* di `middleware/authz.go` dan *named variable* di service, sehingga string permission **hanya ditulis sekali per lokasi**. Saya mitigasi lebih jauh dengan tiga hal:
 
----
+1. **Test untuk matrix peran**. `api_test.http` dan folder "RBAC" di Postman collection menjalankan semua kombinasi peran × endpoint; baris mana pun yang menjawab di luar sel tabel §5.1 akan langsung kelihatan.
+2. **Test untuk service-side check** (`CanAccessStudent`) — saat ini masih berupa penggunaan langsung; kontribusi berikutnya yang layak adalah membungkus pemanggilannya sebagai `assertCanAccess(...)` agar semua handler `/:id` melewati satu fungsi yang sama, dan rename permission di satu tempat.
+3. **Daftar permission ada di `config/app.go`** sebagai konstanta — rename dilakukan di sana, lalu `go build` mengurai seluruh pemakaian dan menolak bila ada ketikgalan.
 
-## 6. Hasil Unit Test
+### **3.3 RBAC masih memadai?**
 
-Perintah yang dijalankan (PowerShell, di folder students_api/):
+Terkait concern  "dosen wali hanya boleh melihat mahasiswa bimbingannya", ini tidak memadai. RBAC menjawab pertanyaan *"peran apa yang boleh melakukan aksi X"*. Kebutuhan dosen wali menjawab pertanyaan berbeda: *"aksi X boleh dilakukan pada baris **Y** bila relasi wali–mahasiswa mengandung (dosen_id, mahasiswa_id) = (current, Y)"*. Itu adalah **row-level access control (ReBAC / row-level security)**.
 
-```powershell
-PS D:\schoolwork\assignments\advancedBackend\students_api> go test ./app/service/... -v
-```
+Wujud minimal yang perlu ditambahkan:
 
-Output (diperbarui setelah ditambahkannya modul auth — tiga test baru sesuai instruksi dosen):
+1. **Tabel relasi baru** (mis. `dosen_wali(user_id INT NOT NULL, student_id INT NOT NULL, PRIMARY KEY(user_id, student_id))`) — menggantikan relasi owner_id sederhana dengan relasi banyak-ke-banyak.
+2. **Predikat akses** di service: `CanAccessStudent(current, targetID, perms)` tumbuh menjadi `CanAccessStudent(current, targetID, perms, repo)` yang melakukan satu query `SELECT 1 FROM dosen_wali WHERE user_id=$1 AND student_id=$2` sebelum memutuskan mengizinkan akses. Predikat dievaluasi oleh `RequirePermission` **tidak** mungkin (middleware tidak punya akses ke DB), sehingga peran rule (RBAC) tetap dipasang di route sebagai pagar pertama, dan row-level rule dipasang di service sebagai pagar kedua.
+3. **Daftar permission diperluas**: `student:read:any` (admin), `student:read:bimbingannya` (dosen). Permission string tetap satu sumber kebenaran di `config/app.go`.
+4. **Resource server / PDP** bila aturan makin banyak: ketika peran × relasi × resource sudah saling silang, pindahkan keputusan ke luar handler (mis. OPA, Casbin, atau tabel `policy_rules`) sehingga service tidak perlu menulis ulang `if` bertingkat setiap ada relasi baru.
 
-```ext
-=== RUN   TestCountTotalPages
---- PASS: TestCountTotalPages (0.00s)
-=== RUN   TestApplyPatch
---- PASS: TestApplyPatch (0.00s)
-=== RUN   TestValidateRegister
-=== RUN   TestValidateRegister/valid_request_returns_no_errors
-=== RUN   TestValidateRegister/weak_password_is_rejected
-=== RUN   TestValidateRegister/username_with_invalid_chars_is_rejected
---- PASS: TestValidateRegister (0.00s)
-    --- PASS: TestValidateRegister/valid_request_returns_no_errors (0.00s)
-    --- PASS: TestValidateRegister/weak_password_is_rejected (0.00s)
-    --- PASS: TestValidateRegister/username_with_invalid_chars_is_rejected (0.00s)
-=== RUN   TestValidateLogin
-=== RUN   TestValidateLogin/weak_password_passes_login_validation
-=== RUN   TestValidateLogin/empty_username_is_rejected
---- PASS: TestValidateLogin (0.00s)
-    --- PASS: TestValidateLogin/weak_password_passes_login_validation (0.00s)
-    --- PASS: TestValidateLogin/empty_username_is_rejected (0.00s)
-=== RUN   TestIsValidUsername
---- PASS: TestIsValidUsername (0.00s)
-PASS
-ok      tugas2/app/service      0.815s
-```
-
-### 6.1 Apa yang diuji
-
-| Test                          | Lokasi                                                                              | Yang diverifikasi                                                                                                                       |
-|-------------------------------|-------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| TestCountTotalPages           | `app/service/user_rules.go` → `CountTotalPages`                                     | Rumus (total+limit-1)/limit untuk total=0/1/10/11/137 dengan limit=10/20; hasil sesuai ekspektasi.                                    |
-| TestApplyPatch                | `app/service/user_rules.go` → `ApplyPatch`                                          | Field yang tidak dikirim pada PatchStudentRequest tidak mengubah field entity; field IsActive dapat di-flip dari `true` ke `false`; tidak ada error map ketika input valid. |
-| TestValidateRegister          | `app/service/auth_rules.go` → `ValidateRegister`                                    | Permintaan valid tanpa error; sandi lemah (`password1`) ditolak; username dengan karakter terlarang (`john-doe`) ditolak.              |
-| TestValidateLogin             | `app/service/auth_rules.go` → `ValidateLogin`                                       | **Sandile lemah tetap lolos** validasi login (kebijakan disengaja — lihat seksi 2.6); username kosong tetap ditolak.                  |
-| TestIsValidUsername           | `app/service/auth_rules.go` → `isValidUsername`                                     | Table-driven 10 kasus: ASCII alfanumerik + `.` + `_` + Latin Extended diterima; spasi, dash, slash, dan `@` ditolak.                   |
-
-### 6.2 Mengapa pilihan test ini cukup untuk sekarang
-
-- **ValidateRegister** murni dan diuji secara langsung karena seluruh aturan kekuatan sandi + username berada di sini. Perubahan satu baris pada `checkPasswordStrength` akan tertangkap oleh sub-test `weak_password_is_rejected`.
-- **ValidateLogin** diuji secara eksplisit untuk mengunci kebijakan "tidak memeriksa kekuatan sandi" — test `weak_password_passes_login_validation` adalah penjaga agar tidak ada contributor di masa depan yang secara tidak sengaja menambahkan `checkPasswordStrength` ke login (yang akan mengunci akun-akun lama).
-- **isValidUsername** diuji secara table-driven karena whitelist karakter adalah keputusan domain yang sering berubah (mis. saat nanti perlu menerima tanda `-`).
-- ValidateCreate, ValidateReplace, IsEmptyPatch, dan isValidEmail adalah pure function dengan struktur mirip ValidateReplace yang diuji via integration test pada seksi 3.6 (status **422** bila email kosong membuktikan ValidateReplace jalan).
-- TranslateError dan method pada StudentService/AuthService hanya menyusun pesan dan meneruskan — lebih bernilai untuk diuji via integration test (status HTTP terlihat, isi body terlihat).
-- studentPostgresRepository sulit diuji tanpa integration test basis data; biarkan integration test (Postman + database lokal) menjadi penjaganya.
-
----
-
-## 6.3 Diskusi Keamanan Auth
-
-Tiga pertanyaan terbuka yang diminta dosen untuk dijawab di laporan. Tidak ada satu jawaban yang "benar" — tujuannya menunjukkan bahwa setiap pilihan membawa risiko yang harus diakui.
-
-### 6.3.1 Penyimpanan token: localStorage vs cookie httpOnly
-
-**localStorage** dapat dibaca oleh JavaScript mana pun yang berjalan pada origin yang sama — termasuk skrip pihak ketiga yang masuk lewat kerentanan XSS di komponen lain (mis. CDN yang disusupi). Semua endpoint `/api/v1/*` lain hanya butuh `Authorization: Bearer` header, sehingga bila ada satu XSS, akses penuh ke token terjadi. **Cookie httpOnly** tidak dapat dibaca oleh JavaScript sama sekali (browser mengirimnya otomatis pada setiap permintaan dengan atribut `SameSite=Lax/Strict`), sehingga XSS tidak secara langsung mencuri token. Kelemahannya: cookie rentan terhadap **CSRF** (permintaan dari origin lain membawa cookie secara otomatis), sehingga server harus memakai anti-CSRF token atau header `SameSite=Strict`.
-
-**Pilihan untuk aplikasi ini:** saya akan menggunakan **localStorage + access token berumur pendek (15 menit) + refresh token via httpOnly cookie**. Justifikasi: API ini adalah backend JSON tanpa render HTML, sehingga CSRF tidak menjadi vektor yang masuk akal (browser tidak akan mengirim body POST `application/json` lintas origin tanpa CORS preflight, dan `corsPolicy` sudah membatasi `AllowOrigins`). localStorage dipakai untuk access token karena umur pendek membatasi jendela eksploitasi bila XSS terjadi; refresh token yang berumur panjang disimpan di cookie httpOnly yang tidak terbaca JavaScript. **Risiko yang saya terima:** XSS di origin frontend akan mencuri access token dan memberikan jendela 15 menit sebelum masa berlakunya habis — karena itu, Content-Security-Policy (`helmet` sudah dipasang) dan audit dependensi frontend menjadi wajib.
-
-### 6.3.2 Masa berlaku access token: 15 menit saat ini
-
-Konsekuensi bila diubah:
-
-| Masa Berlaku             | Yang Berubah (positif)                                                                 | Yang Berubah (negatif)                                                                                          |
-|--------------------------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
-| **24 jam** (diperpanjang)| Pengguna tidak perlu login ulang sepanjang hari kerja; UX lebih mulus.                 | Token yang bocor (lewat XSS, log, screenshot) berlaku 24 jam — jendela serangan panjang. Tidak bisa di-*force logout* secara efektif tanpa deny-list Redis. Refresh token jarang dipakai sehingga bila dicuri, dampaknya bertahan lama. |
-| **1 menit** (dipersingkat)| Token yang bocor hanya berguna <60 detik. Memaksa refresh terus-menerus sehingga hampir semua request melewati endpoint `/auth/refresh` — jejak penggunaan terlihat jelas di log. | **Setiap 1 menit sekali, klien harus round-trip ke server** untuk refresh. Beban kerja server naik signifikan pada traffic tinggi. Risiko "race condition" pada refresh paralel dari beberapa tab (dua refresh bersamaan dapat saling me-revoke). UX buruk untuk aksi satu-kali yang kebetulan melewati menit ke-2 (mis. submit form). |
-
-**15 menit** adalah titik tengah yang lazim di industri: cukup pendek untuk membatasi kebocoran, cukup panjang untuk tidak membanjiri server. Bila profile pengguna berubah (mis. user di-nonaktifkan admin), perubahan baru berlaku paling lambat 15 menit kemudian — tanpa deny-list Redis, tidak ada jalan untuk me-revoke token yang masih hidup.
-
-### 6.3.3 Kerentanan yang masih tersisa
-
-Satu kerentanan yang masih terbuka menurut saya: **JWT access token tidak dapat di-revoke sebelum masa hidupnya habis**. Bila seorang admin menonaktifkan akun (`is_active = false`), access token yang masih hidup sampai 15 menit ke depan **tetap berlaku** karena middleware `RequireAuth` hanya memverifikasi tanda tangan JWT + masa berlaku, **tidak melakukan lookup ke basis data** untuk memastikan user masih aktif. Serangan yang memanfaatkan ini: admin menonaktifkan pengguna, pengguna yang sudahlogout dari satu perangkat tetap dapat mengakses API dari sesi lain sampai tokennya mati.
-
-**Cara menutupnya:**
-
-1. **Versi minimal (cukup untuk praktikum):** Tambahkan field `token_version` ke tabel `users`; sertakan nilainya di klaim JWT. Setiap `PATCH is_active = false` menaikkan `token_version`. Middleware `RequireAuth` melakukan satu query `SELECT token_version FROM users WHERE id = $1` dan menolak bila tidak cocok. Trade-off: satu query ekstra pada setiap request terautentikasi.
-2. **Versi production:** Simpan `jti` (JWT ID) access token yang aktif di Redis dengan TTL = sisa masa berlaku token. Logout / disable = hapus entri Redis. Middleware cek apakah `jti` masih ada. Trade-off: ada komponen stateful tambahan; `helmet` tidak cukup, perlu ratelimit yang lebih ketat pula.
-
-Pilihan #1 adalah langkah pertama yang lebih realistis karena tidak menambah dependensi infrastruktur baru; itulah yang akan saya implementasikan sebagai tindak lanjut dari laporan ini.
-
----
-
-## 7. Checklist Pemeriksaan Sendiri (dari instruksi dosen)
-
-| Yang diperiksa                         | Harus                                                          | Bukti di proyek                                                                                                                                                              | Hasil |
-|----------------------------------------|----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------|
-| Import pada package pp/model        | Tidak ada satu pun package dari proyek Anda sendiri           | pp/model/user.go hanya mengimpor "time" (stdlib). Tidak ada import 	ugas2/... lain.                                                                                | âœ…    |
-| Import pada package pp/repository   | Tidak ada gofiber sama sekali                                  | pp/repository/user_repository.go hanya mengimpor context, errors, mt, pgx, pgconn, pgxpool, dan 	ugas2/app/model. **Tanpa** gofiber.                       | âœ…    |
-| Isi package pp/service              | Tidak ada satu pun perintah SQL                               | Pencarian string SELECT, INSERT, UPDATE, DELETE, ILIKE di folder pp/service/ â†’ **0 hasil**. Yang ber-SQL hanya pp/repository/.                            | âœ…    |
-| Isi file 
-oute                       | Tidak ada if untuk validasi maupun business rules            | 
-oute/route.go hanya berisi deklarasi students.Get/Post/Put/Patch/Delete dan satu fungsi healthCheck(pool) yang hanya memanggil pool.Ping(ctx) — tidak ada if bisnis. | âœ…    |
-| Isi file main.go                     | Tidak ada handler; hanya urutan perakitan                      | main.go hanya berisi LoadEnv â†’ NewPool â†’ NewStudentRepository â†’ NewStudentService â†’ NewApp â†’ pp.Listen + graceful shutdown.                                    | âœ…    |
-
-Verifikasi tambahan (di luar checklist dosen, untuk keyakinan sendiri):
-
-- `app/service/user_rules.go` adalah pure Go: tidak mengimpor `*fiber.Ctx`, pgx, maupun pgxpool. Berarti aturan bisnis dapat diuji dengan `go test` saja.
-- `app/service/auth_rules.go` juga pure Go: aturan `ValidateRegister` dan `ValidateLogin` tidak menyentuh `*fiber.Ctx` — dibuktikan oleh unit test pada seksi 6 yang tidak menyalakan server HTTP.
-- `app/model/user.go` dan `app/model/auth.go` tidak mengimpor apa pun dari proyek sendiri maupun dari gofiber/pgx. Struct domain berdiri sendiri, termasuk `RegisterRequest` yang sengaja tidak memiliki field `Role`.
-- `helper/security.go` hanya mengimpor stdlib (`crypto/rand`, `crypto/sha256`, `encoding/hex`) dan `golang.org/x/crypto/bcrypt`. Tidak bergantung pada fiber atau pgx.
-- `helper/jwt.go` hanya mengimpor `github.com/golang-jwt/jwt/v5` dan `app/model` — tidak menyentuh database, sehingga `JWTManager.Parse` dapat diuji tanpa Postgres.
-- `route/route.go` tetap ramping setelah ditambahnya grup `/api/v1/auth/*`: lima method handler + satu middleware `LoginRateLimiter` saja. Tidak ada `if` validasi maupun business rules.
-
----
-
-## 8. Kesimpulan
-
-Seluruh 14 permintaan uji (10 CRUD + 4 auth flow) me-return status HTTP sesuai ekspektasi, dengan catatan sebagai berikut dibanding versi sebelumnya:
-
-- **Pembuatan status code yang tepat** untuk setiap skenario sukses maupun gagal (200, 201, 204, 400, 401, 403, 404, 409, 415, 422). Status **409 Conflict** adalah tambahan baru yang muncul ketika username duplikat dilanggar pada UNIQUE INDEX; status **401 Unauthorized** dan **403 Forbidden** baru dipakai setelah modul auth ditambahkan.
-- **Validasi input** tetap menggunakan status 422 di service layer sehingga klien dapat membedakan kesalahan format vs kesalahan bisnis vs kesalahan constraint basis data.
-- **Idempotency**: PUT menghasilkan hasil yang sama bila dipanggil berulang; DELETE menggunakan 204 No Content sesuai standar REST.
-- **Middleware RequireJSON** (di middleware/middleware.go) memblokir request POST/PUT/PATCH tanpa Content-Type: application/json sebelum koneksi database dipakai.
-- **Middleware RequireAuth** memvalidasi JWT pada grup `/api/v1/auth/me`, `/api/v1/students`, dan `/api/v1/achievements`; identitas disimpan di `c.Locals` agar service tidak pernah mempercayai `user_id` dari body/URL.
-- **Modul Auth**: Register/Login/Refresh/Logout/Me mengikuti pola Clean Architecture yang sama — aturan di `auth_rules.go` (pure), orkestrasi di `auth_service.go` (handler + use case), persistensi di `user_repository.go` dan `token_repository.go`. Password di-hash dengan bcrypt cost 12 dan tidak pernah disimpan sebagai plaintext (lihat seksi 2.6 dan 2.7).
-- **Refresh token disimpan sebagai hash SHA-256**, bukan plaintext, dan dirotasi setiap kali dipakai — token yang dicuri hanya berguna satu kali.
-- **Clean Architecture ringan**: handler dipindahkan ke service, repository dipisahkan dari pengetahuan domain, model berdiri sendiri, helper memuat konversi HTTP. `user_rules.go` dan `auth_rules.go` adalah pure Go dan dapat di-unit-test tanpa HTTP/DB.
-- **Keamanan SQL** — semua nilai dari klien menjadi argumen $1, , ...; kolom ORDER BY yang tidak bisa diparameterkan tetap melewati whitelist kolomUrut di repository dan llowedSort di helper.
-- **Mass assignment dicegah** — field `Role` tidak ada pada `RegisterRequest`; server selalu menentukan role (`"user"`) saat Create.
-- **Koneksi terkelola** — pgxpool dengan MaxConns/MinConns/MaxConnLifetime mencegah ledakan koneksi; pool.Ping() saat start-up gagal cepat jika basis data tidak tersedia.
-- **Unit test** ditambah dari 2 menjadi 5 test utama (dengan sub-test menjadi 11 assertion keseluruhan) — tiga test baru khusus modul auth: `TestValidateRegister`, `TestValidateLogin`, `TestIsValidUsername`.
-- **Self-check struktur**: tidak ada SQL di pp/service/, tidak ada fiber di pp/repository/,
-oute tidak punya if bisnis, dan main.go murni perakitan — lihat tabel pada seksi 7.
-
-API siap dipakai untuk praktikum lanjutan dan telah memenuhi kaidah RESTful yang diminta pada pertemuan ke-2 dalam wujud Clean Architecture yang ringan, lengkap dengan modul autentikasi berbasis JWT + refresh token rotation.
+Ringkasnya: RBAC adalah pagar kasar di layer route. Kebutuhan dosen wali membutuhkan pagar halus di layer service yang **tahu data per baris**, dan idealnya dipisahkan lagi bila kombinasi aturan makin banyak.
