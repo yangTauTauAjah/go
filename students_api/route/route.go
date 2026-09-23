@@ -23,12 +23,23 @@ func Register(app *fiber.App, deps Dependencies) {
 	auth.Get("/me", middleware.RequireAuth(deps.JWT), deps.AuthService.Me)
 
 	students := api.Group("/students", middleware.RequireJSON, middleware.RequireAuth(deps.JWT))
-	students.Get("/", deps.StudentService.List)
+
+	perms := deps.Permissions
+	students.Get("/",
+		middleware.RequirePermission(perms, "student:list"),
+		deps.StudentService.List)
+	students.Post("/",
+		middleware.RequirePermission(perms, "student:update:any"),
+		deps.StudentService.Create)
+	students.Delete("/:id",
+		middleware.RequirePermission(perms, "student:delete"),
+		deps.StudentService.Delete)
+	students.Patch("/:id/role",
+		middleware.RequirePermission(perms, "role:assign"),
+		deps.StudentService.AssignRole)
 	students.Get("/:id", deps.StudentService.Get)
-	students.Post("/", deps.StudentService.Create)
 	students.Put("/:id", deps.StudentService.Replace)
 	students.Patch("/:id", deps.StudentService.Patch)
-	students.Delete("/:id", deps.StudentService.Delete)
 
 	achievements := api.Group("/achievements", middleware.RequireJSON, middleware.RequireAuth(deps.JWT))
 	achievements.Get("/", deps.AchievementService.List)
@@ -52,6 +63,7 @@ type Dependencies struct {
 	Pool               *pgxpool.Pool
 	JWT                *helper.JWTManager
 	AuthService        *service.AuthService
+	Permissions        *helper.PermissionSet
 	StudentService     *service.StudentService
 	AchievementService *service.AchievementService
 }
