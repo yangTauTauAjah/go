@@ -75,11 +75,6 @@ func (m *JWTManager) Parse(tokenString string) (model.AuthUser, error) {
 		jwt.WithExpirationRequired(),
 	)
 
-	fmt.Printf("DEBUG RAW ERROR: %v\n", err)
-
-	fmt.Printf("%s\n", string(tokenString))
-	fmt.Println("claims:", claims)
-
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return model.AuthUser{}, ErrExpiredToken
