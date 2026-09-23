@@ -12,11 +12,12 @@ import (
 )
 
 type StudentService struct {
-	repo repository.StudentRepository
+	repo  repository.StudentRepository
+	perms *helper.PermissionSet
 }
 
-func NewStudentService(repo repository.StudentRepository) *StudentService {
-	return &StudentService{repo: repo}
+func NewStudentService(repo repository.StudentRepository, permissions *helper.PermissionSet) *StudentService {
+	return &StudentService{repo: repo, perms: permissions}
 }
 
 func (s *StudentService) List(c *fiber.Ctx) error {
@@ -39,15 +40,26 @@ func (s *StudentService) List(c *fiber.Ctx) error {
 func (s *StudentService) Get(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
+	current, ok := helper.CurrentUser(c)
+	if !ok {
+		return helper.Fail(c, fiber.StatusUnauthorized, "belum terautentikasi")
+	}
 	id, valid := helper.ParamID(c)
 	if !valid {
 		return helper.Fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
 	}
-	student, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return translateError(c, err, "gagal mengambil data student")
+	// Pemeriksaan hak akses dilakukan SEBELUM data diambil.
+	// Bila dibalik, penyerang tetap dapat menyimpulkan keberadaan sebuah id
+	// dari perbedaan waktu tanggap antara 403 dan 404.
+	if !CanAccessStudent(current, id, s.perms, "user:read:any") {
+		return helper.Fail(c, fiber.StatusForbidden,
+			"tidak berhak mengakses data user lain")
 	}
-	return helper.Success(c, fiber.StatusOK, "student ditemukan", student)
+	user, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return translateError(c, err, "gagal mengambil data user")
+	}
+	return helper.Success(c, fiber.StatusOK, "user ditemukan", user)
 }
 
 func (s *StudentService) Create(c *fiber.Ctx) error {
@@ -139,8 +151,16 @@ func (s *StudentService) Delete(c *fiber.Ctx) error {
 	if !valid {
 		return helper.Fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
 	}
+	current, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return translateError(c, err, "gagal mengambil data student")
+	}
+	if current.ID == id {
+		return helper.Fail(c, fiber.StatusForbidden,
+			"tidak boleh menghapus akun sendiri")
+	}
 	if err := s.repo.Delete(ctx, id); err != nil {
-		return translateError(c, err, "gagal menghapus student")
+		return translateError(c, err, "gagal menghapus user")
 	}
 	return helper.NoContent(c)
 }
@@ -154,4 +174,31 @@ func translateError(c *fiber.Ctx, err error, generalMessage string) error {
 	default:
 		return helper.Fail(c, fiber.StatusInternalServerError, generalMessage)
 	}
+}
+
+// ---------- PATCH /users/:id/role ----------
+// Dijaga middleware dengan permission role:assign.
+func (s *StudentService) AssignRole(c *fiber.Ctx) error {
+	ctx, cancel := helper.RequestContext(c)
+	defer cancel()
+	current, ok := helper.CurrentUser(c)
+	if !ok {
+		return helper.Fail(c, fiber.StatusUnauthorized, "belum terautentikasi")
+	}
+	id, valid := helper.ParamID(c)
+	if !valid {
+		return helper.Fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
+	}
+	var req model.AssignRoleRequest
+	if err := c.BodyParser(&req); err != nil {
+		return helper.Fail(c, fiber.StatusBadRequest, "body harus berupa JSON yang valid")
+	}
+	if errs := ValidateAssignRole(current, id, req, s.perms); len(errs) > 0 {
+		return helper.FailValidation(c, errs)
+	}
+	result, err := s.repo.UpdateRole(ctx, id, strings.TrimSpace(req.Role))
+	if err != nil {
+		return translateError(c, err, "gagal mengubah role user")
+	}
+	return helper.Success(c, fiber.StatusOK, "role user berhasil diubah", result)
 }
