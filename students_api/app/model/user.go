@@ -3,19 +3,20 @@ package model
 import "time"
 
 type Student struct {
-	ID        int       `json:"id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email"`
-	Password  string    `json:"-"`
-	Role      string    `json:"role"`
-	Name      string    `json:"name"`
-	Field     string    `json:"field"`
-	Semester  int       `json:"semester"`
-	Grade     float64   `json:"grade"`
-	IsActive  bool      `json:"is_active"`
-	Course    []string  `json:"course"`
-	Address   string    `json:"address"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           int           `json:"id"`
+	Username     string        `json:"username"`
+	Email        string        `json:"email"`
+	Password     string        `json:"-"`
+	Role         string        `json:"role"`
+	Name         string        `json:"name"`
+	Field        string        `json:"field"`
+	Semester     int           `json:"semester"`
+	Grade        float64       `json:"grade"`
+	IsActive     bool          `json:"is_active"`
+	Course       []string      `json:"course"`
+	Address      string        `json:"address"`
+	CreatedAt    time.Time     `json:"created_at"`
+	Achievements []Achievement `json:"achievements,omitempty"`
 }
 
 type CreateStudentRequest struct {
@@ -36,32 +37,13 @@ type PatchStudentRequest struct {
 	IsActive *bool   `json:"is_active,omitempty"`
 }
 
-type WebResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
-	Meta    *Meta  `json:"meta,omitempty"`
-	Errors  any    `json:"errors,omitempty"`
-}
-
-type Meta struct {
-	Page       int `json:"page"`
-	Limit      int `json:"limit"`
-	Total      int `json:"total"`
-	TotalPages int `json:"total_pages"`
-}
-
-type ListQuery struct {
-	Page     int
-	Limit    int
-	Search   string
-	Sort     string
-	Order    string
-	IsActive *bool
-}
-
 // Offset menghitung berapa baris yang dilewati untuk halaman ini.
 // Perhitungan ini pindah ke sini karena kini dipakai langsung oleh SQL.
 func (q ListQuery) Offset() int {
 	return (q.Page - 1) * q.Limit
+}
+
+// AssignRoleRequest dipakai endpoint PATCH /users/:id/role.
+type AssignRoleRequest struct {
+	Role string `json:"role"`
 }
