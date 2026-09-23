@@ -44,22 +44,31 @@ func main() {
 	}
 	defer pool.Close()
 
-	achievementRepository := repository.NewAchievementRepository(pool)
 	userRepository := repository.NewStudentRepository(pool)
 	tokenRepository := repository.NewTokenRepository(pool)
+	roleRepository := repository.NewRoleRepository(pool)
+	achievementRepository := repository.NewAchievementRepository(pool)
 
-	achievementService := service.NewAchievementService(achievementRepository)
-	userService := service.NewStudentService(userRepository)
+	rawPermissions, err := roleRepository.LoadPermissions(context.Background())
+	if err != nil {
+		logger.Error("gagal memuat permission", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	permissions := helper.NewPermissionSet(rawPermissions)
+	logger.Info("permission dimuat", slog.Any("roles", permissions.KnownRoles()))
+
+	studentService := service.NewStudentService(userRepository, permissions)
 	authService := service.NewAuthService(
-		userRepository, tokenRepository, jwtManager,
+		userRepository, tokenRepository, jwtManager, permissions,
 		time.Duration(config.GetEnvInt("JWT_REFRESH_TTL_DAYS", 7))*24*time.Hour,
 	)
+	achievementService := service.NewAchievementService(achievementRepository)
 
-	// 4. Aplikasi
 	app := config.NewApp(logger, route.Dependencies{
 		Pool:               pool,
 		JWT:                jwtManager,
-		StudentService:     userService,
+		Permissions:        permissions,
+		StudentService:     studentService,
 		AuthService:        authService,
 		AchievementService: achievementService,
 	})
