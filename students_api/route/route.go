@@ -25,21 +25,13 @@ func Register(app *fiber.App, deps Dependencies) {
 	students := api.Group("/students", middleware.RequireJSON, middleware.RequireAuth(deps.JWT))
 
 	perms := deps.Permissions
-	students.Get("/",
-		middleware.RequirePermission(perms, "student:list"),
-		deps.StudentService.List)
-	students.Post("/",
-		middleware.RequirePermission(perms, "student:update:any"),
-		deps.StudentService.Create)
-	students.Delete("/:id",
-		middleware.RequirePermission(perms, "student:delete"),
-		deps.StudentService.Delete)
-	students.Patch("/:id/role",
-		middleware.RequirePermission(perms, "role:assign"),
-		deps.StudentService.AssignRole)
+	students.Get("/", middleware.RequirePermission(perms, "student:list"), deps.StudentService.List)
+	students.Post("/", middleware.RequirePermission(perms, "student:update:any"), deps.StudentService.Create)
 	students.Get("/:id", deps.StudentService.Get)
-	students.Put("/:id", deps.StudentService.Replace)
-	students.Patch("/:id", deps.StudentService.Patch)
+	students.Put("/:id", middleware.RequirePermission(perms, "student:update:any"), deps.StudentService.Replace)
+	students.Patch("/:id", middleware.RequirePermission(perms, "student:update:any"), deps.StudentService.Patch)
+	students.Patch("/:id/role", middleware.RequirePermission(perms, "role:assign"), deps.StudentService.AssignRole)
+	students.Delete("/:id", middleware.RequirePermission(perms, "student:delete"), deps.StudentService.Delete)
 
 	achievements := api.Group("/achievements", middleware.RequireJSON, middleware.RequireAuth(deps.JWT))
 	achievements.Get("/", deps.AchievementService.List)
