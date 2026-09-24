@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"students_api/app/model"
@@ -51,7 +52,7 @@ func (s *StudentService) Get(c *fiber.Ctx) error {
 	// Pemeriksaan hak akses dilakukan SEBELUM data diambil.
 	// Bila dibalik, penyerang tetap dapat menyimpulkan keberadaan sebuah id
 	// dari perbedaan waktu tanggap antara 403 dan 404.
-	if !CanAccessStudent(current, id, s.perms, "user:read:any") {
+	if !CanAccessStudent(current, id, s.perms, "student:read:any") {
 		return helper.Fail(c, fiber.StatusForbidden,
 			"tidak berhak mengakses data user lain")
 	}
@@ -104,6 +105,7 @@ func (s *StudentService) Replace(c *fiber.Ctx) error {
 	}
 	result, err := s.repo.Update(ctx, model.Student{
 		ID:       id,
+		Role:     strings.TrimSpace(req.Role),
 		Username: strings.TrimSpace(req.Username),
 		Email:    strings.TrimSpace(req.Email),
 		IsActive: req.IsActive,
@@ -151,11 +153,12 @@ func (s *StudentService) Delete(c *fiber.Ctx) error {
 	if !valid {
 		return helper.Fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
 	}
-	current, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return translateError(c, err, "gagal mengambil data student")
+	current, ok := helper.CurrentUser(c)
+	if !ok {
+		return helper.Fail(c, fiber.StatusUnauthorized, "belum terautentikasi")
 	}
-	if current.ID == id {
+	fmt.Println("Debug: current user ID:", current.UserID, "requested delete ID:", id)
+	if current.UserID == id {
 		return helper.Fail(c, fiber.StatusForbidden,
 			"tidak boleh menghapus akun sendiri")
 	}
@@ -166,6 +169,7 @@ func (s *StudentService) Delete(c *fiber.Ctx) error {
 }
 
 func translateError(c *fiber.Ctx, err error, generalMessage string) error {
+	fmt.Println("Debug Error:", err.Error())
 	switch {
 	case errors.Is(err, repository.ErrNotFound):
 		return helper.Fail(c, fiber.StatusNotFound, "student tidak ditemukan")
