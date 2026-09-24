@@ -27,6 +27,7 @@ type CreateStudentRequest struct {
 
 type ReplaceStudentRequest struct {
 	Username string `json:"username"`
+	Role     string `json:"role"`
 	Email    string `json:"email"`
 	IsActive bool   `json:"is_active"`
 }
