@@ -160,18 +160,18 @@ func (h *StudentHandler) Patch(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fail(c, fiber.StatusBadRequest, "body harus berupa JSON yang valid")
 	}
-	if req.Username == nil && req.Email == nil && req.IsActive == nil {
+	if req.Username == "" && req.Email == nil && req.IsActive == nil {
 		return fail(c, fiber.StatusBadRequest, "tidak ada field yang diubah")
 	}
 	saatIni, err := h.repo.FindByID(ctx, id)
 	if err != nil {
 		return terjemahkanError(c, err, "gagal mengambil data user")
 	}
-	if req.Username != nil {
-		if strings.TrimSpace(*req.Username) == "" {
+	if req.Username != "" {
+		if strings.TrimSpace(req.Username) == "" {
 			return failValidation(c, map[string]string{"username": "tidak boleh kosong"})
 		}
-		saatIni.Username = *req.Username
+		saatIni.Username = req.Username
 	}
 	if req.Email != nil {
 		if !strings.Contains(*req.Email, "@") {

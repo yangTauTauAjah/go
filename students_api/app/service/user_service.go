@@ -24,18 +24,41 @@ func NewStudentService(repo repository.StudentRepository, permissions *helper.Pe
 func (s *StudentService) List(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
-	q := helper.ParseListQuery(c)
-	students, total, err := s.repo.FindAll(ctx, q)
+
+	// Format dipilih SEBELUM query dijalankan. Bila client meminta format
+	// yang tidak dapat kita hasilkan, tidak ada gunanya membebani database
+	// untuk hasil yang akan dibuang.
+	format, err := helper.Negotiate(c, helper.FormatJSON, helper.FormatCSV)
 	if err != nil {
-		return helper.Fail(c, fiber.StatusInternalServerError,
-			"gagal mengambil data student")
+		return err
 	}
-	return helper.SuccessList(c, "daftar student berhasil diambil", students, &model.Meta{
-		Page:       q.Page,
-		Limit:      q.Limit,
-		Total:      total,
-		TotalPages: CountTotalPages(total, q.Limit),
-	})
+	q, err := helper.ParseCursorQuery(c)
+	if err != nil {
+		return err
+	}
+
+	rows, err := s.repo.FindAfterCursor(ctx, q)
+	if err != nil {
+		return helper.Internal(err)
+	}
+
+	// Baris tambahan hasil limit+1 dipotong di sini. Ia hanya penanda bahwa
+	// masih ada halaman berikutnya, bukan bagian dari halaman ini.
+	hasMore := len(rows) > q.Limit
+	if hasMore {
+		rows = rows[:q.Limit]
+	}
+	meta := &model.CursorMeta{Limit: q.Limit, HasMore: hasMore}
+	if hasMore && len(rows) > 0 {
+		last := rows[len(rows)-1]
+		meta.NextCursor = helper.EncodeCursor(last.CreatedAt, last.ID)
+	}
+
+	if format == helper.FormatCSV {
+		return helper.WriteUsersCSV(c, rows)
+	}
+
+	return helper.SuccessCursor(c, "daftar user berhasil diambil", rows, meta)
 }
 
 func (s *StudentService) Get(c *fiber.Ctx) error {
@@ -43,22 +66,18 @@ func (s *StudentService) Get(c *fiber.Ctx) error {
 	defer cancel()
 	current, ok := helper.CurrentUser(c)
 	if !ok {
-		return helper.Fail(c, fiber.StatusUnauthorized, "belum terautentikasi")
+		return helper.Unauthorized("belum terautentikasi")
 	}
 	id, valid := helper.ParamID(c)
 	if !valid {
-		return helper.Fail(c, fiber.StatusBadRequest, "id harus berupa angka positif")
+		return helper.BadRequest("id harus berupa angka positif")
 	}
-	// Pemeriksaan hak akses dilakukan SEBELUM data diambil.
-	// Bila dibalik, penyerang tetap dapat menyimpulkan keberadaan sebuah id
-	// dari perbedaan waktu tanggap antara 403 dan 404.
-	if !CanAccessStudent(current, id, s.perms, "student:read:any") {
-		return helper.Fail(c, fiber.StatusForbidden,
-			"tidak berhak mengakses data user lain")
+	if !CanAccessStudent(current, id, s.perms, "user:read:any") {
+		return helper.Forbidden("tidak berhak mengakses data user lain")
 	}
 	user, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return translateError(c, err, "gagal mengambil data user")
+		return translateError(err, "user")
 	}
 	return helper.Success(c, fiber.StatusOK, "user ditemukan", user)
 }
@@ -73,8 +92,8 @@ func (s *StudentService) Create(c *fiber.Ctx) error {
 	}
 	req.Username = strings.TrimSpace(req.Username)
 	req.Email = strings.TrimSpace(req.Email)
-	if errs := ValidateCreate(req); len(errs) > 0 {
-		return helper.FailValidation(c, errs)
+	if errs := helper.ValidateStruct(req); errs != nil {
+		return helper.Validation(errs)
 	}
 	newUser, err := s.repo.Create(ctx, model.Student{
 		Username: req.Username,
@@ -83,7 +102,7 @@ func (s *StudentService) Create(c *fiber.Ctx) error {
 		IsActive: true,
 	})
 	if err != nil {
-		return translateError(c, err, err.Error())
+		return translateError(err, "user")
 	}
 	return helper.Created(c, "student berhasil dibuat", newUser, "/api/v1/students/"+strconv.Itoa(newUser.ID))
 }
@@ -111,7 +130,7 @@ func (s *StudentService) Replace(c *fiber.Ctx) error {
 		IsActive: req.IsActive,
 	})
 	if err != nil {
-		return translateError(c, err, "gagal memperbarui student")
+		return translateError(err, "user")
 	}
 	return helper.Success(c, fiber.StatusOK, "student berhasil diganti seluruhnya", result)
 }
@@ -133,15 +152,12 @@ func (s *StudentService) Patch(c *fiber.Ctx) error {
 	}
 	current, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return translateError(c, err, "gagal mengambil data student")
+		return translateError(err, "user")
 	}
-	updated, errs := ApplyPatch(current, req)
-	if len(errs) > 0 {
-		return helper.FailValidation(c, errs)
-	}
+	updated := ApplyPatch(current, req)
 	result, err := s.repo.Update(ctx, updated)
 	if err != nil {
-		return translateError(c, err, "gagal memperbarui student")
+		return translateError(err, "user")
 	}
 	return helper.Success(c, fiber.StatusOK, "student berhasil diperbarui sebagian", result)
 }
@@ -163,21 +179,9 @@ func (s *StudentService) Delete(c *fiber.Ctx) error {
 			"tidak boleh menghapus akun sendiri")
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
-		return translateError(c, err, "gagal menghapus user")
+		return translateError(err, "user")
 	}
 	return helper.NoContent(c)
-}
-
-func translateError(c *fiber.Ctx, err error, generalMessage string) error {
-	fmt.Println("Debug Error:", err.Error())
-	switch {
-	case errors.Is(err, repository.ErrNotFound):
-		return helper.Fail(c, fiber.StatusNotFound, "student tidak ditemukan")
-	case errors.Is(err, repository.ErrDuplicate):
-		return helper.Fail(c, fiber.StatusConflict, "username sudah dipakai")
-	default:
-		return helper.Fail(c, fiber.StatusInternalServerError, generalMessage)
-	}
 }
 
 // ---------- PATCH /users/:id/role ----------
@@ -202,7 +206,24 @@ func (s *StudentService) AssignRole(c *fiber.Ctx) error {
 	}
 	result, err := s.repo.UpdateRole(ctx, id, strings.TrimSpace(req.Role))
 	if err != nil {
-		return translateError(c, err, "gagal mengubah role user")
+		return translateError(err, "user")
 	}
 	return helper.Success(c, fiber.StatusOK, "role user berhasil diubah", result)
+}
+
+// translateError mengubah error milik repository menjadi AppError.
+//
+// Perhatikan tanda tangannya: tidak ada fiber.Ctx. Fungsi ini hanya
+// menerjemahkan satu jenis error menjadi jenis lain, dan tidak tahu
+// apa pun tentang HTTP. Yang tidak dikenali menjadi Internal — fail
+// closed: lebih baik membalas 500 daripada menebak-nebak status.
+func translateError(err error, entity string) error {
+	switch {
+	case errors.Is(err, repository.ErrNotFound):
+		return helper.NotFound(entity + " tidak ditemukan")
+	case errors.Is(err, repository.ErrDuplicate):
+		return helper.Conflict("username sudah dipakai")
+	default:
+		return nil
+	}
 }

@@ -23,10 +23,7 @@ func TestCountTotalPages(t *testing.T) {
 func TestApplyPatch(t *testing.T) {
 	initial := model.Student{ID: 1, Username: "sari", Email: "sari@mail.com", IsActive: true}
 	inactive := false
-	result, errs := ApplyPatch(initial, model.PatchStudentRequest{IsActive: &inactive})
-	if len(errs) != 0 {
-		t.Fatalf("tidak seharusnya ada error: %v", errs)
-	}
+	result := ApplyPatch(initial, model.PatchStudentRequest{IsActive: &inactive})
 	if result.IsActive {
 		t.Error("is_active seharusnya berubah menjadi false")
 	}
