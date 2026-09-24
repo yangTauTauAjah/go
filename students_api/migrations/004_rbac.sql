@@ -19,11 +19,11 @@ CREATE TABLE IF NOT EXISTS permissions (
  description VARCHAR(150) NOT NULL
 );
 INSERT INTO permissions (name, description) VALUES
- ('student:list', 'Melihat daftar seluruh user'),
- ('student:read:any', 'Melihat data user mana pun'),
- ('student:update:any', 'Mengubah data user mana pun'),
- ('student:delete', 'Menghapus user'),
- ('role:assign', 'Mengubah role milik user lain')
+ ('student:list', 'Melihat daftar seluruh student'),
+ ('student:read:any', 'Melihat data student mana pun'),
+ ('student:update:any', 'Mengubah data student mana pun'),
+ ('student:delete', 'Menghapus student'),
+ ('role:assign', 'Mengubah role milik student lain')
  ON CONFLICT (name) DO NOTHING;
 -- ---------------------------------------------------------------
 -- role_permissions — tabel penghubung, inti dari model RBAC
