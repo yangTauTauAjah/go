@@ -1,0 +1,396 @@
+### Variables
+@baseUrl = http://localhost:3000
+@apiPrefix = /api/v1/students
+@contentType = application/json
+
+
+### ========== RBAC & ROLE MATRIX ==========
+### Skenario: siapkan 3 akun (admin / staff / user) dengan /auth/register,
+### naikkan role admin & staff lewat SQL, lalu login untuk mendapatkan
+### token. Ganti variabel di bawah secara manual setelah login berhasil.
+
+### ---- Setup: daftarkan tiga akun ----
+### Register Admin
+POST http://localhost:3000/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "email": "admin@unair.ac.id",
+  "password": "Rahasia123!"
+}
+
+### Register Staff
+POST http://localhost:3000/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "staff",
+  "email": "staff@unair.ac.id",
+  "password": "Rahasia123!"
+}
+
+### Register User Biasa
+POST http://localhost:3000/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "userbiasa",
+  "email": "user@unair.ac.id",
+  "password": "Rahasia123!"
+}
+
+### ---- Login & simpan token ----
+### Login Admin -> simpan di {{tokenAdmin}}
+# @name loginAdmin
+POST http://localhost:3000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Rahasia123!"
+}
+
+### Login Staff -> simpan di {{tokenStaff}}
+# @name loginStaff
+POST http://localhost:3000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "staff",
+  "password": "Rahasia123!"
+}
+
+### Login User -> simpan di {{tokenUser}}
+# @name loginUser
+POST http://localhost:3000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "userbiasa",
+  "password": "Rahasia123!"
+}
+
+###
+
+@tokenAdmin = {{loginAdmin.response.body.data.access_token}}
+@tokenStaff = {{loginStaff.response.body.data.access_token}}
+@tokenUser  = {{loginUser.response.body.data.access_token}}
+
+### ---- GET /students (list) ----
+### Expected: admin 200, staff 200, user 403
+GET http://localhost:3000/api/v1/students/
+Authorization: Bearer {{tokenAdmin}}
+
+###
+GET http://localhost:3000/api/v1/students/
+Authorization: Bearer {{tokenStaff}}
+
+###
+GET http://localhost:3000/api/v1/students/
+Authorization: Bearer {{tokenUser}}
+
+### ---- GET /students/:id -- diri sendiri ----
+### Expected: 200 untuk semua role (self-access)
+GET http://localhost:3000/api/v1/students/6
+Authorization: Bearer {{tokenAdmin}}
+
+###
+GET http://localhost:3000/api/v1/students/7
+Authorization: Bearer {{tokenStaff}}
+
+###
+GET http://localhost:3000/api/v1/students/8
+Authorization: Bearer {{tokenUser}}
+
+### ---- GET /students/:id -- milik orang lain ----
+### Expected: admin 200, staff 200, user 403 (user hanya boleh akses diri sendiri)
+GET http://localhost:3000/api/v1/students/7
+Authorization: Bearer {{tokenAdmin}}
+
+###
+GET http://localhost:3000/api/v1/students/8
+Authorization: Bearer {{tokenStaff}}
+
+###
+GET http://localhost:3000/api/v1/students/6
+Authorization: Bearer {{tokenUser}}
+
+### ---- PUT /students/:id -- milik orang lain ----
+### Expected: admin 200, staff 403, user 403
+PUT http://localhost:3000/api/v1/students/7
+Content-Type: application/json
+Authorization: Bearer {{tokenAdmin}}
+
+{
+  "username": "staff_updated",
+  "email": "staff_new@unair.ac.id",
+  "role": "staff",
+  "is_active": true
+}
+
+###
+PUT http://localhost:3000/api/v1/students/1
+Content-Type: application/json
+Authorization: Bearer {{tokenStaff}}
+
+{
+  "username": "admin_updated",
+  "email": "admin_new@unair.ac.id",
+  "is_active": true
+}
+
+###
+PUT http://localhost:3000/api/v1/students/10
+Content-Type: application/json
+Authorization: Bearer {{tokenUser}}
+
+{
+  "username": "user_updated",
+  "email": "user_new@unair.ac.id",
+  "role": "user",
+  "is_active": true
+}
+
+### ---- DELETE /students/:id -- orang lain ----
+### Expected: admin 204, staff 403, user 403
+DELETE http://localhost:3000/api/v1/students/3
+Authorization: Bearer {{tokenAdmin}}
+
+###
+DELETE http://localhost:3000/api/v1/students/1
+Authorization: Bearer {{tokenStaff}}
+
+###
+DELETE http://localhost:3000/api/v1/students/1
+Authorization: Bearer {{tokenUser}}
+
+### ---- DELETE /students/:id -- diri sendiri ----
+### Expected: admin 403, staff 403, user 403 (tidak boleh hapus akun sendiri)
+DELETE http://localhost:3000/api/v1/students/6
+Authorization: Bearer {{tokenAdmin}}
+
+###
+DELETE http://localhost:3000/api/v1/students/7
+Authorization: Bearer {{tokenStaff}}
+
+###
+DELETE http://localhost:3000/api/v1/students/8
+Authorization: Bearer {{tokenUser}}
+
+### ---- PATCH /students/:id/role -- milik orang lain ----
+### Expected: admin 200, staff 403, user 403
+### Admin menaikkan user id=3 dari user menjadi staff
+PATCH http://localhost:3000/api/v1/students/8/role
+Content-Type: application/json
+Authorization: Bearer {{tokenAdmin}}
+
+{
+  "role": "staff"
+}
+
+###
+PATCH http://localhost:3000/api/v1/students/6/role
+Content-Type: application/json
+Authorization: Bearer {{tokenStaff}}
+
+{
+  "role": "admin"
+}
+
+###
+PATCH http://localhost:3000/api/v1/students/6/role
+Content-Type: application/json
+Authorization: Bearer {{tokenUser}}
+
+{
+  "role": "admin"
+}
+
+### ---- PATCH /students/:id/role -- diri sendiri ----
+### Expected: 422 Unprocessable Entity (admin mengubah role dirinya sendiri)
+PATCH http://localhost:3000/api/v1/students/6/role
+Content-Type: application/json
+Authorization: Bearer {{tokenAdmin}}
+
+{
+  "role": "staff"
+}
+
+###
+PATCH http://localhost:3000/api/v1/students/2/role
+Content-Type: application/json
+Authorization: Bearer {{tokenStaff}}
+
+{
+  "role": "admin"
+}
+
+###
+PATCH http://localhost:3000/api/v1/students/3/role
+Content-Type: application/json
+Authorization: Bearer {{tokenUser}}
+
+{
+  "role": "admin"
+}
+
+### ---- Tanpa Authorization header ----
+### Expected: 401 Unauthorized untuk semua role
+GET http://localhost:3000/api/v1/students/
+
+###
+PUT http://localhost:3000/api/v1/students/1
+Content-Type: application/json
+
+{
+  "username": "x",
+  "email": "x@example.com",
+  "is_active": true
+}
+
+###
+DELETE http://localhost:3000/api/v1/students/1
+
+###
+PATCH http://localhost:3000/api/v1/students/1/role
+Content-Type: application/json
+
+{
+  "role": "staff"
+}
+
+### ---- Pengujian hampir selalu terlupa: token lama setelah role berubah ----
+### Skenario: admin menaikkan user id=3 dari user ke staff (sudah dilakukan
+### di atas dengan PATCH /students/3/role). Sekarang panggil endpoint
+### dengan token LAMA milik user id=3 (yang masih membawa role "user").
+### Expected: 403 karena role di token tidak sinkron lagi.
+# @name loginUserLama
+POST http://localhost:3000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "userbiasa",
+  "password": "Rahasia123!"
+}
+
+@tokenUserLama = {{loginUserLama.response.body.access_token}}
+
+###
+### Token lama masih role "user" -- 403 ("role user tidak memiliki hak user:list")
+GET http://localhost:3000/api/v1/students/
+Authorization: Bearer {{tokenUserLama}}
+
+###
+### Login ulang akan menghasilkan token baru dengan role "staff" -- 200
+# @name loginUserBaru
+POST http://localhost:3000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "userbiasa",
+  "password": "Rahasia123!"
+}
+
+@tokenUserBaru = {{loginUserBaru.response.body.access_token}}
+
+###
+GET http://localhost:3000/api/v1/students/
+Authorization: Bearer {{tokenUserBaru}}
+
+
+@baseUrl = http://localhost:3000/api/v1
+@contentType = application/json
+
+### 1. Register - Success
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "username": "sari",
+  "email": "sari@example.com",
+  "password": "rahasia123"
+}
+
+### 2. Register - Weak Password Rejected
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "username": "budi",
+  "email": "budi@example.com",
+  "password": "password1"
+}
+
+### 4. Access Protected Endpoint Without Token
+GET {{baseUrl}}/users
+
+### 5a. Login - Incorrect Password
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "sari",
+  "password": "salahsekali9"
+}
+
+### 5b. Login - Non-existent User
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "tidakada",
+  "password": "salahsekali9"
+}
+
+### 6. Login - Success (Captures Token)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "sari",
+  "password": "rahasia123"
+}
+
+### Store tokens from response (VS Code REST Client syntax)
+@accessToken = {{login.response.body.access_token}}
+@refreshToken = {{login.response.body.refresh_token}}
+
+### 7a. Get Current Profile (Using Access Token)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{accessToken}}
+
+### 7b. Get Users List (Using Access Token)
+GET {{baseUrl}}/users
+Authorization: Bearer {{accessToken}}
+
+### 8. Access with Tampered / Invalid Token
+GET {{baseUrl}}/users
+Authorization: Bearer {{accessToken}}X
+
+### 9a. Refresh Token - Valid Call
+# @name refreshTokenCall
+POST {{baseUrl}}/auth/refresh
+Content-Type: {{contentType}}
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### 9b. Reuse Old Refresh Token (Token Reuse Detection)
+POST {{baseUrl}}/auth/refresh
+Content-Type: {{contentType}}
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### 10. Brute Force Attempt (Simulate Consecutive Failed Logins)
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "username": "sari",
+  "password": "salahsekali9"
+}
