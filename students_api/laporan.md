@@ -2,9 +2,9 @@ Nama: **Habib Anwash**
 NIM: **434241033**
 Repo URL: https://github.com/yangTauTauAjah/go
 
-## **1. Testing Endpoint**
+## 1. Testing Endpoint
 
-### ** 1. GET — /students (list, admin)**
+### 1. GET — /students (list, admin)
 
 #### Request
 
@@ -17,7 +17,7 @@ Authorization: Bearer <tokenAdmin>
 
 [[image placeholder]]
 
-### ** 2. GET — /students (list, staff)**
+### 2. GET — /students (list, staff)
 
 #### Request
 
@@ -30,7 +30,7 @@ Authorization: Bearer <tokenStaff>
 
 [[image placeholder]]
 
-### ** 3. GET — /students (list, user)**
+### 3. GET — /students (list, user)
 
 #### Request
 
@@ -43,7 +43,7 @@ Authorization: Bearer <tokenUser>
 
 [[image placeholder]]
 
-### ** 4. GET — /students/:id diri sendiri (admin/staff/user)**
+### 4. GET — /students/:id diri sendiri (admin/staff/user)
 
 #### Request
 
@@ -58,7 +58,7 @@ Authorization: Bearer <tokenAdmin>
 
 [[image placeholder]]
 
-### ** 5. GET — /students/:id milik orang lain (admin)**
+### 5. GET — /students/:id milik orang lain (admin)
 
 #### Request
 
@@ -71,7 +71,7 @@ Authorization: Bearer <tokenAdmin>
 
 [[image placeholder]]
 
-### ** 6. GET — /students/:id milik orang lain (staff)**
+### 6. GET — /students/:id milik orang lain (staff)
 
 #### Request
 
@@ -84,7 +84,7 @@ Authorization: Bearer <tokenStaff>
 
 [[image placeholder]]
 
-### ** 7. GET — /students/:id milik orang lain (user)**
+### 7. GET — /students/:id milik orang lain (user)
 
 #### Request
 
@@ -97,7 +97,7 @@ Authorization: Bearer <tokenUser>
 
 [[image placeholder]]
 
-### ** 8. PUT — /students/:id milik orang lain (admin)**
+### 8. PUT — /students/:id milik orang lain (admin)
 
 #### Request
 
@@ -117,7 +117,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 9. PUT — /students/:id milik orang lain (staff)**
+### 9. PUT — /students/:id milik orang lain (staff)
 
 #### Request
 
@@ -137,7 +137,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 10. PUT — /students/:id milik orang lain (user)**
+### 10. PUT — /students/:id milik orang lain (user)
 
 #### Request
 
@@ -157,7 +157,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 11. DELETE — /students/:id milik orang lain (admin)**
+### 11. DELETE — /students/:id milik orang lain (admin)
 
 #### Request
 
@@ -170,7 +170,7 @@ Authorization: Bearer <tokenAdmin>
 
 [[image placeholder]]
 
-### ** 12. DELETE — /students/:id milik orang lain (staff)**
+### 12. DELETE — /students/:id milik orang lain (staff)
 
 #### Request
 
@@ -183,7 +183,7 @@ Authorization: Bearer <tokenStaff>
 
 [[image placeholder]]
 
-### ** 13. DELETE — /students/:id milik orang lain (user)**
+### 13. DELETE — /students/:id milik orang lain (user)
 
 #### Request
 
@@ -196,7 +196,7 @@ Authorization: Bearer <tokenUser>
 
 [[image placeholder]]
 
-### ** 14. DELETE — /students/:id diri sendiri (admin)**
+### 14. DELETE — /students/:id diri sendiri (admin)
 
 #### Request
 
@@ -211,7 +211,7 @@ Authorization: Bearer <tokenAdmin>
 
 [[image placeholder]]
 
-### ** 15. PATCH — /students/:id/role milik orang lain (admin)**
+### 15. PATCH — /students/:id/role milik orang lain (admin)
 
 #### Request
 
@@ -229,7 +229,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 16. PATCH — /students/:id/role milik orang lain (staff)**
+### 16. PATCH — /students/:id/role milik orang lain (staff)
 
 #### Request
 
@@ -247,7 +247,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 17. PATCH — /students/:id/role milik orang lain (user)**
+### 17. PATCH — /students/:id/role milik orang lain (user)
 
 #### Request
 
@@ -265,7 +265,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 18. PATCH — /students/:id/role diri sendiri (admin)**
+### 18. PATCH — /students/:id/role diri sendiri (admin)
 
 #### Request
 
@@ -283,7 +283,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 19. PATCH — /students/:id/role diri sendiri (staff)**
+### 19. PATCH — /students/:id/role diri sendiri (staff)
 
 #### Request
 
@@ -301,7 +301,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 20. PATCH — /students/:id/role diri sendiri (user)**
+### 20. PATCH — /students/:id/role diri sendiri (user)
 
 #### Request
 
@@ -319,7 +319,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 21. Tanpa Authorization header — GET list (semua peran)**
+### 21. Tanpa Authorization header — GET list (semua peran)
 
 #### Request
 
@@ -333,7 +333,7 @@ GET /api/v1/students/
 
 [[image placeholder]]
 
-### ** 22. Tanpa Authorization header — PUT (semua peran)**
+### 22. Tanpa Authorization header — PUT (semua peran)
 
 #### Request
 
@@ -354,7 +354,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 23. Tanpa Authorization header — DELETE (semua peran)**
+### 23. Tanpa Authorization header — DELETE (semua peran)
 
 #### Request
 
@@ -368,7 +368,7 @@ DELETE /api/v1/students/1
 
 [[image placeholder]]
 
-### ** 24. Tanpa Authorization header — PATCH role (semua peran)**
+### 24. Tanpa Authorization header — PATCH role (semua peran)
 
 #### Request
 
@@ -387,7 +387,7 @@ Content-Type: application/json
 
 [[image placeholder]]
 
-### ** 25. GET — /students dengan token lama setelah role berubah (user lama)**
+### 25. GET — /students dengan token lama setelah role berubah (user lama)
 
 #### Request
 
@@ -400,7 +400,7 @@ Authorization: Bearer <tokenUserLama>
 
 [[image placeholder]]
 
-### ** 26. GET — /students setelah login ulang (user baru)**
+### 26. GET — /students setelah login ulang (user baru)
 
 #### Request
 
@@ -413,7 +413,7 @@ Authorization: Bearer <tokenUserBaru>
 
 [[image placeholder]]
 
-## **2. Test Summary**
+## 2. Test Summary
 
 
 | No  | Skenario                                               | Peran            | Expected | Actual | Hasil  |
@@ -444,9 +444,9 @@ Authorization: Bearer <tokenUserBaru>
 
 ---
 
-## **3. Additional Discussion **
+## 3. Additional Discussion **
 
-### **3.1 Why not to authorize from middleware?**
+### 3.1 Why not to authorize from middleware?
 
 Di `middleware/authz.go`, `RequirePermission` bekerja dengan **satu informasi saja**: peran dari token. Ia tidak tahu id baris data yang akan disentuh, karena id itu baru tersedia *setelah* Fiber memparsing path parameter `/students/:id` dan route handler mulai berjalan. Akibatnya, keputusan "user ini boleh menyentuh user id=N karena N == current.UserID" hanya bisa dibuat **setelah** id itu diketahui, yaitu di dalam service handler. Pada kode saya, pemeriksaannya duduk di `app/service/authz_rules.go`:
 
@@ -490,7 +490,7 @@ Kalau aturan "milik sendiri ATAU punya permission `:any`" itu dipaksakan ke midd
 
 Middleware yang **bisa** dipasang di route, dan memang sudah dipasang, adalah `RequirePermission(perms, "student:list")` pada `students.Get("/", …)`. Keputusan itu **tidak** bergantung pada id — "siapa yang boleh list?" adalah peran, bukan id. Itulah batasan yang jelas: **yang bergantung pada data → service; yang hanya bergantung pada peran → middleware**.
 
-### **3.2 Pemeriksaan akses route & service**
+### 3.2 Pemeriksaan akses route & service
 
 Risiko konkret: **inkonsistensi akibat drift permission string**. Route di `route/route.go` lulus permission seperti `"student:list"`, `"student:update:any"`, `"student:delete"`, `"role:assign"` ke `RequirePermission`. Service handler di `user_service.go` melewati `"user:read:any"` (lihat baris di atas) ke `CanAccessStudent`. Bila di kemudian hari seseorang mengubah `student:list` di route tetapi lupa memperbarui konstanta `user:read:any` di service (atau sebaliknya), akan ada dua jalur masuk: satu route yang langsung menerima (200), satu service yang menolak (403), untuk permintaan yang kelihatannya identik. Penyerang yang menemukan rute yang luput akan mendapat akses; pengguna sah yang kena rute yang salah akan terkunci.
 
@@ -500,7 +500,7 @@ Risiko ini berkurang karena saya memakai *typed wrapper* di `middleware/authz.go
 2. **Test untuk service-side check** (`CanAccessStudent`) — saat ini masih berupa penggunaan langsung; kontribusi berikutnya yang layak adalah membungkus pemanggilannya sebagai `assertCanAccess(...)` agar semua handler `/:id` melewati satu fungsi yang sama, dan rename permission di satu tempat.
 3. **Daftar permission ada di `config/app.go`** sebagai konstanta — rename dilakukan di sana, lalu `go build` mengurai seluruh pemakaian dan menolak bila ada ketikgalan.
 
-### **3.3 RBAC masih memadai?**
+### 3.3 RBAC masih memadai?
 
 Terkait concern  "dosen wali hanya boleh melihat mahasiswa bimbingannya", ini tidak memadai. RBAC menjawab pertanyaan *"peran apa yang boleh melakukan aksi X"*. Kebutuhan dosen wali menjawab pertanyaan berbeda: *"aksi X boleh dilakukan pada baris **Y** bila relasi wali–mahasiswa mengandung (dosen_id, mahasiswa_id) = (current, Y)"*. Itu adalah **row-level access control (ReBAC / row-level security)**.
 
