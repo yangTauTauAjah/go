@@ -1,0 +1,108 @@
+### SIAKAD Mini — VS Code REST Client
+### Pastikan variable @host dan token sudah di-set.
+
+@host = http://localhost:3000/api/v1
+@contentType = application/json
+
+### 1. Health Check
+GET {{host}}/health
+
+### 2. Login Admin
+# @name loginAdmin
+POST {{host}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@siakad.test",
+  "password": "admin123"
+}
+
+###
+@adminToken = {{loginAdmin.response.body.data.access_token}}
+
+### 3. Login Mahasiswa
+# @name loginMhs
+### Catatan seeder:
+###   - NIM = "18722100000{i+1}" untuk i=0..19 (contoh: "187221000002" untuk mahasiswa ke-1)
+###   - Email = "mhs{NN}@siakad.test" (NN = 01..20)
+###   - Password = NIM (plain, akan di-hash saat login)
+POST {{host}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "mhs01@siakad.test",
+  "password": "187221000002"
+}
+
+###
+@mhsToken = {{loginMhs.response.body.data.access_token}}
+
+### 4. GET /auth/me
+GET {{host}}/auth/me
+Authorization: Bearer {{adminToken}}
+
+### 5. GET /students (admin)
+GET {{host}}/students?page=1&limit=10&search=20241&sort=nim&order=asc
+Authorization: Bearer {{adminToken}}
+
+### 6. POST /students (admin)
+POST {{host}}/students
+Authorization: Bearer {{adminToken}}
+Content-Type: {{contentType}}
+
+{
+  "email": "202410000099@siakad.test",
+  "nim": "202410000099",
+  "nama": "Mahasiswa Baru",
+  "prodi": "Teknik Informatika",
+  "angkatan": 2024,
+  "ipk_terakhir": 3.25
+}
+
+### 7. GET /students/:id
+GET {{host}}/students/1
+Authorization: Bearer {{mhsToken}}
+
+### 8. PUT /students/:id (admin)
+PUT {{host}}/students/1
+Authorization: Bearer {{adminToken}}
+Content-Type: {{contentType}}
+
+{
+  "nama": "Mahasiswa Updated",
+  "ipk_terakhir": 3.75
+}
+
+### 9. DELETE /students/:id (admin)
+DELETE {{host}}/students/99
+Authorization: Bearer {{adminToken}}
+
+### 10. GET /courses (semua role)
+GET {{host}}/courses?semester=1&available_only=true
+Authorization: Bearer {{mhsToken}}
+
+### 11. POST /enrollments (mahasiswa)
+POST {{host}}/enrollments
+Authorization: Bearer {{mhsToken}}
+Content-Type: {{contentType}}
+
+{
+  "course_id": 1,
+  "tahun_akademik": "2026/2027Ganjil"
+}
+
+### 12. DELETE /enrollments/:id (mahasiswa)
+DELETE {{host}}/enrollments/1
+Authorization: Bearer {{mhsToken}}
+
+### 13. Login salah (test 401)
+POST {{host}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@siakad.test",
+  "password": "salah"
+}
+
+### 14. Akses tanpa token (test 401)
+GET {{host}}/students
