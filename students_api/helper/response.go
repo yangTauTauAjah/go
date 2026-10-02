@@ -18,6 +18,15 @@ func SuccessList(c *fiber.Ctx, message string, data any, meta *model.Meta) error
 	})
 }
 
+// SuccessCursor adalah kembangan SuccessList untuk endpoint paginasi
+// berbasis cursor. CursorMeta menggantikan Meta karena cursor tidak
+// menyediakan Total / TotalPages (lihat komentar di model.CursorMeta).
+func SuccessCursor(c *fiber.Ctx, message string, data any, meta *model.CursorMeta) error {
+	return c.Status(fiber.StatusOK).JSON(model.WebResponse{
+		Success: true, Message: message, Data: data, Meta: meta,
+	})
+}
+
 func Created(c *fiber.Ctx, message string, data any, location string) error {
 	c.Set("Location", location)
 	return c.Status(fiber.StatusCreated).JSON(model.WebResponse{

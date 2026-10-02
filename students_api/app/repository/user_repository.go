@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// userColumns adalah daftar kolom yang konsisten antara FindByID,
+// FindByUsername, UpdateRole, dan FindAfterCursor. Memusatkan di sini
+// berarti perubahan struktur tabel cukup diubah di satu tempat.
+const userColumns = "id, username, role, email, password, is_active, created_at"
+
+// scanUser membaca satu baris users ke model.Student.
+// Dipakai oleh FindAfterCursor; dipisahkan agar FindAll tetap bisa
+// membaca kolom achievements lewat json.Unmarshal.
+func scanUser(row pgx.Row) (model.Student, error) {
+	var u model.Student
+	if err := row.Scan(
+		&u.ID, &u.Username, &u.Role, &u.Email,
+		&u.Password, &u.IsActive, &u.CreatedAt,
+	); err != nil {
+		return model.Student{}, err
+	}
+	return u, nil
+}
+
 var (
 	ErrNotFound  = errors.New("data tidak ditemukan")
 	ErrDuplicate = errors.New("data sudah ada")
@@ -275,7 +294,11 @@ func (r *studentPostgresRepository) FindAfterCursor(
 	}
 	if q.After != nil {
 		args = append(args, q.After.CreatedAt, q.After.ID)
-		where += fmt.Sprintf(" AND (created_at, id) < ($%d, $%d)",
+		// ORDER BY ASC, id ASC → baris yang LEBIH BARU adalah yang
+		// LEBIH BESAR. Karena itu halaman berikutnya mengambil baris
+		// dengan (created_at, id) > cursor, bukan < (yang akan
+		// mengembalikan baris lebih tua — arah yang salah).
+		where += fmt.Sprintf(" AND (created_at, id) > ($%d, $%d)",
 			len(args)-1, len(args))
 	}
 	args = append(args, q.Limit+1)

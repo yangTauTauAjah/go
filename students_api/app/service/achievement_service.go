@@ -42,7 +42,10 @@ func (s *AchievementService) Get(c *fiber.Ctx) error {
 	}
 	achievement, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return translateError(c, err, "gagal mengambil data achievement")
+		if appErr := translateError(err, "achievement"); appErr != nil {
+			return appErr
+		}
+		return helper.Internal(err)
 	}
 	return helper.Success(c, fiber.StatusOK, "achievement ditemukan", achievement)
 }

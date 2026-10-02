@@ -43,7 +43,9 @@ func newValidator() *validator.Validate {
 		return true
 	})
 	_ = v.RegisterValidation("strongpassword", func(fl validator.FieldLevel) bool {
-		return passwordStrength(fl.Field().String()) != ""
+		// passwordStrength mengembalikan "" untuk sandi yang LOLOS.
+		// Tag ini valid ketika sandi kuat, jadi kita uji == "", bukan != "".
+		return passwordStrength(fl.Field().String()) == ""
 	})
 	return v
 }
@@ -73,4 +75,60 @@ func ValidateStruct(s any) map[string]string {
 		}
 	}
 	return result
+}
+
+// messageFor menerjemahkan satu ValidationError menjadi pesan
+// berbahasa Indonesia. Nama aturan di sini (required, email, ...)
+// adalah bawaan validator/v10; aturan custom (nospace, username,
+// strongpassword) ditangani di cabang default dengan menyalin alasan
+// yang dihasilkan oleh rule-nya sendiri.
+func messageFor(fe validator.FieldError) string {
+	switch fe.Tag() {
+	case "required":
+		return "wajib diisi"
+	case "email":
+		return "format email tidak valid"
+	case "min":
+		return "minimal " + fe.Param() + " karakter"
+	case "max":
+		return "maksimal " + fe.Param() + " karakter"
+	case "alphanum":
+		return "hanya boleh huruf dan angka"
+	case "nospace":
+		return "tidak boleh mengandung spasi"
+	case "username":
+		return "hanya boleh huruf, angka, titik, dan garis bawah"
+	case "strongpassword":
+		return "password terlalu lemah (minimal 8 karakter, huruf dan angka)"
+	case "omitnil":
+		// omitnil tidak pernah gagal saat ini — pointer nol berarti
+		// "tidak dikirim", yang memang aturan main PATCH.
+		return ""
+	default:
+		return "tidak valid"
+	}
+}
+
+// passwordStrength mengembalikan "" untuk sandi yang lolos,
+// atau pesan kesalahan untuk yang tidak. Aturannya sama dengan yang
+// dipakai auth_rules.checkPasswordStrength, diletakkan di sini
+// agar tag "strongpassword" pada struct dapat memanfaatkannya.
+func passwordStrength(s string) string {
+	const minPasswordLength = 8
+	if len(s) < minPasswordLength {
+		return "minimal 8 karakter"
+	}
+	var hasLetter, hasDigit bool
+	for _, r := range s {
+		switch {
+		case unicode.IsLetter(r):
+			hasLetter = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		}
+	}
+	if !hasLetter || !hasDigit {
+		return "harus memuat huruf dan angka"
+	}
+	return ""
 }

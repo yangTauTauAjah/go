@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,6 +24,11 @@ const (
 	CodeTooManyRequests  = "TOO_MANY_REQUESTS"
 	CodeInternal         = "INTERNAL_ERROR"
 )
+
+// ErrInvalidCursor dipakai oleh DecodeCursor saat string cursor rusak.
+// Dikembalikan sebagai sentinel error agar caller dapat membedakannya
+// dari kesalahan lain dan memetakannya ke 400 Bad Request.
+var ErrInvalidCursor = errors.New("cursor tidak valid")
 
 // AppError adalah satu-satunya bentuk kegagalan yang dikenal aplikasi ini.
 //

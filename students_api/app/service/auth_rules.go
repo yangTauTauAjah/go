@@ -89,3 +89,15 @@ func isValidUsername(username string) bool {
 	}
 	return true
 }
+
+// isValidEmail adalah versi manual yang dipakai ValidateRegister.
+// Aturan yang sama juga dinyatakan oleh tag "email" di struct, tetapi
+// ValidateRegister adalah pure function yang tidak menerima middleware
+// HTTP — ia tidak bisa menggunakan helper.ValidateStruct, jadi
+// pemeriksaan ini tetap ditulis di sini.
+func isValidEmail(email string) bool {
+	email = strings.TrimSpace(email)
+	at := strings.Index(email, "@")
+	dot := strings.LastIndex(email, ".")
+	return at > 0 && dot > at+1 && dot < len(email)-1
+}

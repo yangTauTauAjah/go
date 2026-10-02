@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"students_api/app/model"
 )
 
 // EncodeCursor mengubah penanda menjadi satu string yang aman di URL.

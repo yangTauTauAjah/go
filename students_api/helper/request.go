@@ -56,3 +56,37 @@ func ParseListQuery(c *fiber.Ctx) model.ListQuery {
 	}
 	return q
 }
+
+// ParseCursorQuery membangun CursorQuery dari query string.
+// Parameternya: cursor (opsional), limit (default 10, maks 100),
+// search, dan is_active.
+//
+// Cursor yang dikirim client didecode di sini juga — gagal decode
+// langsung menjadi 400 Bad Request, bukan diteruskan ke repository.
+func ParseCursorQuery(c *fiber.Ctx) (model.CursorQuery, error) {
+	limit := c.QueryInt("limit", 10)
+	if limit < 1 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	q := model.CursorQuery{
+		Limit:    limit,
+		Search:   strings.TrimSpace(c.Query("search")),
+		IsActive: nil,
+	}
+	if raw := c.Query("is_active"); raw != "" {
+		if v, err := strconv.ParseBool(raw); err == nil {
+			q.IsActive = &v
+		}
+	}
+	if raw := strings.TrimSpace(c.Query("cursor")); raw != "" {
+		cur, err := DecodeCursor(raw)
+		if err != nil {
+			return model.CursorQuery{}, BadRequest("cursor tidak valid")
+		}
+		q.After = &cur
+	}
+	return q, nil
+}

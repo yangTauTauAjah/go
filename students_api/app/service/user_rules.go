@@ -5,30 +5,13 @@ import (
 	"students_api/app/model"
 )
 
-func ValidateCreate(req model.CreateStudentRequest) map[string]string {
-	errs := map[string]string{}
-	if strings.TrimSpace(req.Username) == "" {
-		errs["username"] = "wajib diisi"
-	}
-	if !isValidEmail(req.Email) {
-		errs["email"] = "format email tidak valid"
-	}
-	if len(req.Password) < 8 {
-		errs["password"] = "minimal 8 karakter"
-	}
-	return errs
-}
-
-func ValidateReplace(req model.ReplaceStudentRequest) map[string]string {
-	errs := map[string]string{}
-	if strings.TrimSpace(req.Username) == "" {
-		errs["username"] = "wajib diisi pada PUT"
-	}
-	if !isValidEmail(req.Email) {
-		errs["email"] = "wajib diisi dan berformat email pada PUT"
-	}
-	return errs
-}
+// ValidateCreate dan ValidateReplace sebelumnya berisi pemeriksaan
+// bentuk manual (username/email/panjang password). Aturan tersebut
+// kini dinyatakan sebagai tag validate pada struct
+// CreateStudentRequest dan ReplaceStudentRequest. Validasi manual
+// dipertahankan sebagai stub kosong agar kompatibilitas dengan kode
+// lama — misalnya unit test — tetap terjaga, dan agar cerita migrasi
+// "dari manual ke tag" tetap bisa dilihat di git history.
 
 // ApplyPatch tidak lagi mengembalikan daftar error. Pemeriksaan bentuk
 // sudah selesai dikerjakan tag sebelum fungsi ini dipanggil, sehingga di
@@ -60,11 +43,4 @@ func CountTotalPages(total, limit int) int {
 		return 0
 	}
 	return (total + limit - 1) / limit
-}
-
-func isValidEmail(email string) bool {
-	email = strings.TrimSpace(email)
-	at := strings.Index(email, "@")
-	dot := strings.LastIndex(email, ".")
-	return at > 0 && dot > at+1 && dot < len(email)-1
 }

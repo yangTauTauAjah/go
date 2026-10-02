@@ -19,16 +19,23 @@ type Student struct {
 	Achievements []Achievement `json:"achievements,omitempty"`
 }
 
+// CreateStudentRequest dan ReplaceStudentRequest memakai tag validate
+// yang sama dengan CreateUserRequest/ReplaceUserRequest di bawah. Agar
+// tidak terjadi drift aturan, bentuk aturan disimpan satu kali di sini
+// dan dipakai bersama oleh service Create, Replace, dan Register.
 type CreateStudentRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username string `json:"username" validate:"required,min=3,max=30,username"`
+	Email    string `json:"email" validate:"required,email,max=120"`
+	Password string `json:"password" validate:"required,min=8,max=72,strongpassword"`
 }
 
 type ReplaceStudentRequest struct {
-	Username string `json:"username"`
-	Role     string `json:"role"`
-	Email    string `json:"email"`
+	Username string `json:"username" validate:"required,min=3,max=30,username"`
+	// Role tetap di sini walau tidak divalidasi bentuknya di service
+	// (peran "user"/"admin"/"staff" diperiksa oleh ValidateAssignRole
+	// pada endpoint /:id/role, bukan pada PUT biasa).
+	Role     string `json:"role" validate:"required,oneof=admin staff user"`
+	Email    string `json:"email" validate:"required,email,max=120"`
 	IsActive bool   `json:"is_active"`
 }
 

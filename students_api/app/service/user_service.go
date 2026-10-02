@@ -119,8 +119,8 @@ func (s *StudentService) Replace(c *fiber.Ctx) error {
 		return helper.Fail(c, fiber.StatusBadRequest,
 			"body harus berupa JSON yang valid")
 	}
-	if errs := ValidateReplace(req); len(errs) > 0 {
-		return helper.FailValidation(c, errs)
+	if errs := helper.ValidateStruct(req); len(errs) > 0 {
+		return helper.Validation(errs)
 	}
 	result, err := s.repo.Update(ctx, model.Student{
 		ID:       id,
