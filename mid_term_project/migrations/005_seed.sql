@@ -1,0 +1,7 @@
+-- =====================================================================
+-- SIAKAD Mini - Schema tabel tambahan untuk seeder
+-- =====================================================================
+-- File ini sebenarnya hanya berisi dokumentasi. Data admin, mahasiswa,
+-- dan mata kuliah di-seed lewat program Go (cmd/seed) agar hash bcrypt
+-- benar-benar valid. Lihat README untuk menjalankan seeder.
+-- =====================================================================
