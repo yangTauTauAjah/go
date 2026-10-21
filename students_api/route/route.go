@@ -37,6 +37,22 @@ func Register(app *fiber.App, deps Dependencies) {
 	achievements.Get("/", deps.AchievementService.List)
 	achievements.Get("/:id", deps.AchievementService.Get)
 
+	// --- kelas dan KRS ---
+	courses := api.Group("/courses",
+		middleware.RequireJSON,
+		middleware.RequireAuth(deps.JWT))
+	// "/mine" didaftarkan SEBELUM "/:id". Fiber mencocokkan route sesuai
+	// urutan pendaftaran; bila dibalik, "mine" akan dianggap sebagai :id.
+	courses.Get("/", deps.CourseService.List)
+	courses.Get("/mine", deps.CourseService.Mine)
+	courses.Get("/:id", deps.CourseService.Get)
+	courses.Post("/:id/enroll", deps.CourseService.Enroll)
+	courses.Delete("/:id/enroll", deps.CourseService.Drop)
+	enrollments := api.Group("/enrollments",
+		middleware.RequireJSON,
+		middleware.RequireAuth(deps.JWT))
+	enrollments.Post("/swap", deps.CourseService.Swap)
+
 }
 
 func healthCheck(pool *pgxpool.Pool) fiber.Handler {
@@ -58,4 +74,5 @@ type Dependencies struct {
 	Permissions        *helper.PermissionSet
 	StudentService     *service.StudentService
 	AchievementService *service.AchievementService
+	CourseService      *service.CourseService
 }
