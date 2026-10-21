@@ -25,6 +25,8 @@ const (
 	CodeInternal         = "INTERNAL_ERROR"
 )
 
+var ErrCourseFull = errors.New("kuota kelas sudah penuh")
+
 // ErrInvalidCursor dipakai oleh DecodeCursor saat string cursor rusak.
 // Dikembalikan sebagai sentinel error agar caller dapat membedakannya
 // dari kesalahan lain dan memetakannya ke 400 Bad Request.
@@ -88,4 +90,12 @@ func Internal(cause error) *AppError {
 		Status: fiber.StatusInternalServerError, Code: CodeInternal,
 		Message: "terjadi kesalahan pada server", Cause: cause,
 	}
+}
+
+// NewError dipakai bila sebuah kegagalan butuh kode yang lebih spesifik
+// daripada kode umum di atas — misalnya COURSE_FULL alih-alih CONFLICT.
+// Client dapat menampilkan pesan berbeda untuk "kelas penuh" dan "sudah
+// terdaftar", padahal keduanya sama-sama 409.
+func NewError(status int, code, message string) *AppError {
+	return &AppError{Status: status, Code: code, Message: message}
 }
