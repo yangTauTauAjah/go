@@ -49,3 +49,7 @@ func FailValidation(c *fiber.Ctx, errs map[string]string) error {
 		Success: false, Message: "validasi gagal", Errors: errs,
 	})
 }
+
+func ServiceUnavailable(message string) *fiber.Error {
+	return fiber.NewError(fiber.StatusServiceUnavailable, message)
+}

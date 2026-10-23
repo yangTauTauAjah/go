@@ -89,9 +89,21 @@ func messageFor(fe validator.FieldError) string {
 	case "email":
 		return "format email tidak valid"
 	case "min":
-		return "minimal " + fe.Param() + " karakter"
+		switch fe.Kind() {
+		case reflect.String:
+			return "minimal " + fe.Param() + " karakter"
+		case reflect.Slice, reflect.Array, reflect.Map:
+			return "minimal " + fe.Param() + " item"
+		}
+		return "nilai minimal " + fe.Param()
 	case "max":
-		return "maksimal " + fe.Param() + " karakter"
+		switch fe.Kind() {
+		case reflect.String:
+			return "maksimal " + fe.Param() + " karakter"
+		case reflect.Slice, reflect.Array, reflect.Map:
+			return "maksimal " + fe.Param() + " item"
+		}
+		return "nilai maksimal " + fe.Param()
 	case "alphanum":
 		return "hanya boleh huruf dan angka"
 	case "nospace":
