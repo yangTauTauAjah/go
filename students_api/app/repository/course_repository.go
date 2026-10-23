@@ -32,6 +32,7 @@ type CourseRepository interface {
 	LockStudent(ctx context.Context, userID int) error
 	SumCredits(ctx context.Context, userID int) (int, error)
 	LockCourses(ctx context.Context, ids ...int) error
+	IsEnrolled(ctx context.Context, courseID, userID int) (bool, error)
 }
 
 const courseColumns = `id, code, name, credits, quota, enrolled_count, version, created_at`
@@ -255,4 +256,18 @@ func (r *coursePostgresRepository) UpdateQuota(ctx context.Context, id, quota, v
 		return model.Course{}, ErrVersionConflict
 	}
 	return model.Course{}, ErrQuotaBelowFilled
+}
+
+// IsEnrolled dipakai layer lain — misalnya layanan ulasan di MongoDB — yang
+// perlu tahu apakah seorang mahasiswa terdaftar di sebuah kelas.
+func (r *coursePostgresRepository) IsEnrolled(ctx context.Context, courseID, userID int) (bool,
+	error) {
+	var exists bool
+	err := r.db.QueryRow(ctx,
+		"SELECT EXISTS (SELECT 1 FROM enrollments WHERE course_id = $1 AND user_id = $2)",
+		courseID, userID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("memeriksa pendaftaran: %w", err)
+	}
+	return exists, nil
 }
