@@ -66,8 +66,17 @@ func main() {
 	courseRepository := repository.NewCourseRepository(pool)
 	txManager := repository.NewTxManager(pool)
 	reviewRepository := repository.NewReviewRepository(mongoDB)
+	portfolioRepository := repository.NewPortfolioRepository(mongoDB)
+
+	// Index harus siap sebelum server menerima request. Index unik
+	// student_id yang menjaga aturan "satu mahasiswa satu portofolio"
+	// tidak boleh baru aktif setelah ada request pertama.
 	if err := reviewRepository.EnsureIndexes(context.Background()); err != nil {
 		logger.Error("gagal membuat index MongoDB", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	if err := portfolioRepository.EnsureIndexes(context.Background()); err != nil {
+		logger.Error("gagal membuat index MongoDB portfolio", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
@@ -87,6 +96,7 @@ func main() {
 	achievementService := service.NewAchievementService(achievementRepository)
 	courseService := service.NewCourseService(courseRepository, txManager)
 	reviewService := service.NewReviewService(reviewRepository, courseRepository, permissions)
+	portfolioService := service.NewPortfolioService(portfolioRepository, userRepository)
 
 	app := config.NewApp(logger, route.Dependencies{
 		Pool:               pool,
@@ -98,6 +108,7 @@ func main() {
 		AchievementService: achievementService,
 		CourseService:      courseService,
 		ReviewService:      reviewService,
+		PortfolioService:   portfolioService,
 	})
 
 	port := config.GetEnv("APP_PORT", "3000")

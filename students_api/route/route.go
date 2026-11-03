@@ -33,7 +33,15 @@ func Register(app *fiber.App, deps Dependencies) {
 	students.Patch("/:id", middleware.RequirePermission(perms, "student:update:any"), deps.StudentService.Patch)
 	students.Patch("/:id/role", middleware.RequirePermission(perms, "role:assign"), deps.StudentService.AssignRole)
 	students.Delete("/:id", middleware.RequirePermission(perms, "student:delete"), deps.StudentService.Delete)
-
+	// --- portofolio mahasiswa (MongoDB) ---
+	// Portfolio adalah milik satu mahasiswa, jadi endpoint-nya menempel pada
+	// /students/:id. Middleware RequirePermission student:update:any dipasang
+	// pada operasi tulis karena mengubah portofolio setara mengubah data
+	// mahasiswa; pembacaan cukup dengan token yang valid.
+	students.Get("/:id/portfolio", deps.PortfolioService.Get)
+	students.Put("/:id/portfolio", middleware.RequirePermission(perms, "student:update:any"), deps.PortfolioService.Upsert)
+	students.Post("/:id/portfolio/projects", middleware.RequirePermission(perms, "student:update:any"), deps.PortfolioService.AddProject)
+	students.Delete("/:id/portfolio/projects/:projectId", middleware.RequirePermission(perms, "student:update:any"), deps.PortfolioService.RemoveProject)
 	achievements := api.Group("/achievements", middleware.RequireJSON, middleware.RequireAuth(deps.JWT))
 	achievements.Get("/", deps.AchievementService.List)
 	achievements.Get("/:id", deps.AchievementService.Get)
@@ -66,10 +74,18 @@ func Register(app *fiber.App, deps Dependencies) {
 	reviews.Post("/:id/replies", deps.ReviewService.Reply)
 	reviews.Post("/:id/helpful", deps.ReviewService.MarkHelpful)
 
+	// --- statistik portofolio lintas mahasiswa ---
+	// Group terpisah, bukan /students/:id/... , karena endpoint ini
+	// menggabungkan SEMUA portofolio. Group terpisah juga membuat
+	// "stats" tidak pernah tertangkap oleh pola /students/:id.
+	portfolios := api.Group("/portfolios", middleware.RequireAuth(deps.JWT))
+	portfolios.Get("/stats/technologies", deps.PortfolioService.TechStats)
+
 }
 
 func healthCheck(pool *pgxpool.Pool, mongoClient *mongo.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		print("healthCheck called\n")
 		ctx, cancel := context.WithTimeout(c.UserContext(), 2*time.Second)
 		defer cancel()
 		if err := pool.Ping(ctx); err != nil {
@@ -92,4 +108,5 @@ type Dependencies struct {
 	AchievementService *service.AchievementService
 	CourseService      *service.CourseService
 	ReviewService      *service.ReviewService
+	PortfolioService   *service.PortfolioService
 }
