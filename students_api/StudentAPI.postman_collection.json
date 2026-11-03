@@ -54,6 +54,31 @@
       "key": "refreshToken",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "pfToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pfStudentId",
+      "value": "6",
+      "type": "string"
+    },
+    {
+      "key": "pfEmptyStudentId",
+      "value": "5",
+      "type": "string"
+    },
+    {
+      "key": "pfProjectId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pfDeletedProjectId",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -1195,6 +1220,372 @@
               "raw": "{{baseUrl}}/api/v1/students/",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "students", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PORTFOLIO - 0. Setup (Login Admin)",
+      "description": "Prasyarat: portofolio hanya bisa ditulis oleh role admin (permission student:update:any). Jalankan login ini lebih dulu agar {{pfToken}} terisi.",
+      "item": [
+        {
+          "name": "P1. POST /auth/login admin (simpan pfToken)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.access_token) {",
+                  "    pm.collectionVariables.set('pfToken', jsonData.data.access_token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"Rahasia123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PORTFOLIO - 1. Alur Normal (Happy Path)",
+      "description": "Skenario 1.2 sampai 1.7 pada laporan_portfolio.md: portofolio kosong, upsert, baca, tambah proyek, hapus proyek, dan statistik teknologi.",
+      "item": [
+        {
+          "name": "P2. GET /students/:id/portfolio - belum pernah diisi (200, bentuk kosong)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfEmptyStudentId}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfEmptyStudentId}}", "portfolio"]
+            }
+          }
+        },
+        {
+          "name": "P3. PUT /students/:id/portfolio - upsert portofolio lengkap (200)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headline\": \"Backend Developer Pemula\",\n  \"bio\": \"Mahasiswa Teknik Informatika yang sedang belajar membangun REST API menggunakan Go, PostgreSQL, dan MongoDB.\",\n  \"projects\": [\n    {\n      \"title\": \"Sistem Informasi Perpustakaan\",\n      \"technologies\": [\"Go\", \"PostgreSQL\", \"Fiber\"],\n      \"url\": \"https://github.com/habib/perpustakaan\",\n      \"year\": 2026\n    },\n    {\n      \"title\": \"Student Portfolio API\",\n      \"technologies\": [\"Go\", \"MongoDB\"],\n      \"url\": \"https://github.com/habib/portfolio-api\",\n      \"year\": 2026\n    }\n  ],\n  \"certificates\": [\n    {\n      \"name\": \"Belajar Backend dengan Go\",\n      \"issuer\": \"Program Studi\",\n      \"issued_at\": \"2026-09-15T00:00:00Z\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio"]
+            }
+          }
+        },
+        {
+          "name": "P4. GET /students/:id/portfolio - portofolio sudah terisi (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio"]
+            }
+          }
+        },
+        {
+          "name": "P5. POST /students/:id/portfolio/projects - tambah proyek pertama (200, simpan pfProjectId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.projects && jsonData.data.projects.length) {",
+                  "    var last = jsonData.data.projects[jsonData.data.projects.length - 1];",
+                  "    pm.collectionVariables.set('pfProjectId', last.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Sistem Informasi Perpustakaan\",\n  \"technologies\": [\"Go\", \"PostgreSQL\", \"Fiber\"],\n  \"url\": \"https://github.com/habib/perpustakaan\",\n  \"year\": 2026\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio", "projects"]
+            }
+          }
+        },
+        {
+          "name": "P6. POST /students/:id/portfolio/projects - tambah proyek kedua (200, id dipakai P7/P12)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.projects && jsonData.data.projects.length) {",
+                  "    var last = jsonData.data.projects[jsonData.data.projects.length - 1];",
+                  "    pm.collectionVariables.set('pfProjectId', last.id);",
+                  "    pm.collectionVariables.set('pfDeletedProjectId', last.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Student Portfolio API\",\n  \"technologies\": [\"Go\", \"MongoDB\"],\n  \"url\": \"https://github.com/habib/portfolio-api\",\n  \"year\": 2026\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio", "projects"]
+            }
+          }
+        },
+        {
+          "name": "P7. DELETE /students/:id/portfolio/projects/:projectId - hapus proyek (200, $pull)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio/projects/{{pfProjectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio", "projects", "{{pfProjectId}}"]
+            }
+          }
+        },
+        {
+          "name": "P8. GET /portfolios/stats/technologies - statistik teknologi (200, sort total desc)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolios/stats/technologies",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "portfolios", "stats", "technologies"]
+            }
+          }
+        },
+        {
+          "name": "P8b. GET /portfolios/stats/technologies?limit=5 - statistik dengan limit custom (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolios/stats/technologies?limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "portfolios", "stats", "technologies"],
+              "query": [
+                { "key": "limit", "value": "5" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PORTFOLIO - 2. Kasus Gagal",
+      "description": "Skenario 1.8 sampai 1.14 pada laporan_portfolio.md: mahasiswa tidak ada, validasi body, portofolio belum dibuat, proyek tidak ditemukan, id bukan ObjectID, format tanggal salah, dan tanpa token.",
+      "item": [
+        {
+          "name": "P9. GET /students/999999/portfolio - mahasiswa tidak ada di PostgreSQL (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/999999/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "999999", "portfolio"]
+            }
+          }
+        },
+        {
+          "name": "P10. PUT /students/:id/portfolio - body gagal validasi (400, detail per field)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headline\": \"ab\",\n  \"bio\": \"pendek\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio"]
+            }
+          }
+        },
+        {
+          "name": "P11. POST /students/:id/portfolio/projects - portofolio belum dibuat (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Proyek Maharasiswa\",\n  \"technologies\": [\"Go\"],\n  \"year\": 2026\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfEmptyStudentId}}/portfolio/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfEmptyStudentId}}", "portfolio", "projects"]
+            }
+          }
+        },
+        {
+          "name": "P12. DELETE /students/:id/portfolio/projects/:projectId - proyek sudah dihapus (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio/projects/{{pfDeletedProjectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio", "projects", "{{pfDeletedProjectId}}"]
+            }
+          }
+        },
+        {
+          "name": "P13. DELETE /students/:id/portfolio/projects/bukan-objectid - id bukan ObjectID valid (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio/projects/bukan-objectid",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio", "projects", "bukan-objectid"]
+            }
+          }
+        },
+        {
+          "name": "P14. PUT /students/:id/portfolio - issued_at date-only bukan RFC3339 (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headline\": \"Backend Developer Pemula\",\n  \"bio\": \"Mahasiswa Teknik Informatika yang sedang belajar membangun REST API.\",\n  \"projects\": [],\n  \"certificates\": [\n    {\n      \"name\": \"Sertifikat X\",\n      \"issuer\": \"Prodi\",\n      \"issued_at\": \"2026-09-15\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio"]
+            }
+          }
+        },
+        {
+          "name": "P15. GET /students/:id/portfolio - tanpa Authorization header (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PORTFOLIO - 3. NoSQL Injection (Ditolak)",
+      "description": "Bukti lapisan binding Go menolak objek operator MongoDB, sehingga payload $gt/$ne/$regex tidak pernah sampai ke query. Kedua request harus membalas 400.",
+      "item": [
+        {
+          "name": "P16. PUT /students/:id/portfolio - operator $gt/$ne di body (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"headline\": {\"$gt\": \"\"},\n  \"bio\": {\"$ne\": \"x\"},\n  \"projects\": [],\n  \"certificates\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio"]
+            }
+          }
+        },
+        {
+          "name": "P17. POST /students/:id/portfolio/projects - operator $regex/$ne di body (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "{{contentType}}" },
+              { "key": "Authorization", "value": "Bearer {{pfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": {\"$regex\": \"^.*\"},\n  \"technologies\": [{\"$ne\": null}],\n  \"year\": 2026\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/students/{{pfStudentId}}/portfolio/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "students", "{{pfStudentId}}", "portfolio", "projects"]
             }
           }
         }

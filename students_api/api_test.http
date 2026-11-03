@@ -287,9 +287,9 @@ Content-Type: application/json
   "password": "Rahasia123!"
 }
 
-@tokenAdmin = {{loginAdmin.response.body.access_token}}
-@tokenStaff = {{loginStaff.response.body.access_token}}
-@tokenUser  = {{loginUser.response.body.access_token}}
+@tokenAdmin = {{loginAdmin.response.body.data.access_token}}
+@tokenStaff = {{loginStaff.response.body.data.access_token}}
+@tokenUser  = {{loginUser.response.body.data.access_token}}
 
 ### ---- GET /students (list) ----
 ### Expected: admin 200, staff 200, user 403
@@ -605,4 +605,171 @@ Content-Type: {{contentType}}
 {
   "username": "sari",
   "password": "salahsekali9"
+}
+### ========== PORTFOLIO ==========
+
+### P1 (laporan 1.1). Login admin — prasyarat token
+# # @name pfLogin
+# POST {{baseUrl}}/auth/login
+# Content-Type: {{contentType}}
+
+# {
+#   "username": "admin",
+#   "password": "Rahasia123!"
+# }
+
+# @pfToken = {{pfLogin.response.body.access_token}}
+
+### P2 (laporan 1.2). GET portofolio belum pernah diisi (200, bentuk kosong)
+GET {{baseUrl}}/students/5/portfolio
+Authorization: Bearer {{tokenAdmin}}
+
+### P3 (laporan 1.3). PUT portofolio lengkap — upsert, ObjectID di-generate server
+PUT {{baseUrl}}/students/6/portfolio
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: {{contentType}}
+
+{
+  "headline": "Backend Developer Pemula",
+  "bio": "Mahasiswa Teknik Informatika yang sedang belajar membangun REST API menggunakan Go, PostgreSQL, dan MongoDB.",
+  "projects": [
+    {
+      "title": "Sistem Informasi Perpustakaan",
+      "technologies": ["Go", "PostgreSQL", "Fiber"],
+      "url": "https://github.com/habib/perpustakaan",
+      "year": 2026
+    },
+    {
+      "title": "Student Portfolio API",
+      "technologies": ["Go", "MongoDB"],
+      "url": "https://github.com/habib/portfolio-api",
+      "year": 2026
+    }
+  ],
+  "certificates": [
+    {
+      "name": "Belajar Backend dengan Go",
+      "issuer": "Program Studi",
+      "issued_at": "2026-09-15T00:00:00Z"
+    }
+  ]
+}
+
+### P4 (laporan 1.4). GET portofolio yang sudah terisi (200, dokumen utuh)
+GET {{baseUrl}}/students/6/portfolio
+Authorization: Bearer {{tokenAdmin}}
+
+### P5 (laporan 1.5). POST proyek pertama — $push atomik (200)
+# @name pfAddProject1
+POST {{baseUrl}}/students/6/portfolio/projects
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Sistem Informasi Perpustakaan",
+  "technologies": ["Go", "PostgreSQL", "Fiber"],
+  "url": "https://github.com/habib/perpustakaan",
+  "year": 2026
+}
+
+### P6 (laporan 1.5, lanjutan). POST proyek kedua (200) — id-nya dipakai P7
+# @name pfAddProject2
+POST {{baseUrl}}/students/6/portfolio/projects
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Student Portfolio API",
+  "technologies": ["Go", "MongoDB"],
+  "url": "https://github.com/habib/portfolio-api",
+  "year": 2026
+}
+
+### P7 (laporan 1.6). DELETE proyek kedua via $pull (200, proyek berkurang)
+DELETE {{baseUrl}}/students/6/portfolio/projects/{{pfAddProject2.response.body.$.data.projects[1].id}}
+Authorization: Bearer {{tokenAdmin}}
+
+### P8 (laporan 1.7). GET statistik teknologi terpopuler (200, sort total desc)
+GET {{baseUrl}}/portfolios/stats/technologies
+Authorization: Bearer {{tokenAdmin}}
+
+### P8b (tambahan). Statistik dengan limit custom
+GET {{baseUrl}}/portfolios/stats/technologies?limit=5
+Authorization: Bearer {{tokenAdmin}}
+
+### P9 (laporan 1.8 / F1). GET mahasiswa tidak ada di PostgreSQL (404)
+GET {{baseUrl}}/students/999999/portfolio
+Authorization: Bearer {{tokenAdmin}}
+
+### P10 (laporan 1.9 / F2). PUT validasi gagal (400, detail per field)
+PUT {{baseUrl}}/students/6/portfolio
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: {{contentType}}
+
+{
+  "headline": "ab",
+  "bio": "pendek"
+}
+
+### P11 (laporan 1.10 / F3). POST proyek ke portofolio yang belum dibuat (404)
+POST {{baseUrl}}/students/5/portfolio/projects
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Proyek Maharasiswa",
+  "technologies": ["Go"],
+  "year": 2026
+}
+
+### P12 (laporan 1.11 / F4). DELETE proyek yang sudah terhapus (404)
+DELETE {{baseUrl}}/students/6/portfolio/projects/{{pfAddProject2.response.body.$.data.projects[1].id}}
+Authorization: Bearer {{tokenAdmin}}
+
+### P13 (laporan 1.12 / F5). DELETE projectId bukan ObjectID valid (404)
+DELETE {{baseUrl}}/students/6/portfolio/projects/bukan-objectid
+Authorization: Bearer {{tokenAdmin}}
+
+### P14 (laporan 1.13 / F6). PUT issued_at date-only, bukan RFC3339 (400)
+PUT {{baseUrl}}/students/6/portfolio
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: {{contentType}}
+
+{
+  "headline": "Backend Developer Pemula",
+  "bio": "Mahasiswa Teknik Informatika yang sedang belajar REST API.",
+  "projects": [],
+  "certificates": [
+    {
+      "name": "Sertifikat X",
+      "issuer": "Prodi",
+      "issued_at": "2026-09-15"
+    }
+  ]
+}
+
+### P15 (laporan 1.14 / F7). Tanpa Authorization header (401)
+GET {{baseUrl}}/students/6/portfolio
+
+### P16 (laporan N1). NoSQL injection — operator $gt/$ne di PUT body (400)
+PUT {{baseUrl}}/students/6/portfolio
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: {{contentType}}
+
+{
+  "headline": {"$gt": ""},
+  "bio": {"$ne": "x"},
+  "projects": [],
+  "certificates": []
+}
+
+### P17 (laporan N2). NoSQL injection — operator $regex/$ne di POST body (400)
+POST {{baseUrl}}/students/6/portfolio/projects
+Authorization: Bearer {{tokenAdmin}}
+Content-Type: {{contentType}}
+
+{
+  "title": {"$regex": "^.*"},
+  "technologies": [{"$ne": null}],
+  "year": 2026
 }
