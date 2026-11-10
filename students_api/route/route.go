@@ -8,11 +8,17 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/swagger"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 func Register(app *fiber.App, deps Dependencies) {
+	if deps.EnableSwagger {
+		// Swagger UI: http://localhost:3000/swagger/index.html
+		app.Get("/swagger/*", swagger.HandlerDefault)
+	}
+
 	api := app.Group("/api/v1")
 	api.Get("/health", healthCheck(deps.Pool, deps.MongoClient))
 
@@ -33,11 +39,6 @@ func Register(app *fiber.App, deps Dependencies) {
 	students.Patch("/:id", middleware.RequirePermission(perms, "student:update:any"), deps.StudentService.Patch)
 	students.Patch("/:id/role", middleware.RequirePermission(perms, "role:assign"), deps.StudentService.AssignRole)
 	students.Delete("/:id", middleware.RequirePermission(perms, "student:delete"), deps.StudentService.Delete)
-	// --- portofolio mahasiswa (MongoDB) ---
-	// Portfolio adalah milik satu mahasiswa, jadi endpoint-nya menempel pada
-	// /students/:id. Middleware RequirePermission student:update:any dipasang
-	// pada operasi tulis karena mengubah portofolio setara mengubah data
-	// mahasiswa; pembacaan cukup dengan token yang valid.
 	students.Get("/:id/portfolio", deps.PortfolioService.Get)
 	students.Put("/:id/portfolio", middleware.RequirePermission(perms, "student:update:any"), deps.PortfolioService.Upsert)
 	students.Post("/:id/portfolio/projects", middleware.RequirePermission(perms, "student:update:any"), deps.PortfolioService.AddProject)
@@ -50,20 +51,22 @@ func Register(app *fiber.App, deps Dependencies) {
 	courses := api.Group("/courses",
 		middleware.RequireJSON,
 		middleware.RequireAuth(deps.JWT))
-	// "/mine" didaftarkan SEBELUM "/:id". Fiber mencocokkan route sesuai
-	// urutan pendaftaran; bila dibalik, "mine" akan dianggap sebagai :id.
 	courses.Get("/", deps.CourseService.List)
 	courses.Get("/mine", deps.CourseService.Mine)
 	courses.Get("/:id", deps.CourseService.Get)
 	courses.Post("/:id/enroll", deps.CourseService.Enroll)
 	courses.Delete("/:id/enroll", deps.CourseService.Drop)
+	// PATCH /courses/:id mengubah kuota kelas. Route ini HARUS didaftarkan
+	// SESUDAH /mine, kalau tidak "/mine" akan tertangkap oleh "/:id".
+	courses.Patch("/:id", middleware.RequirePermission(perms, "course:manage"), deps.CourseService.UpdateQuota)
+	courses.Get("/:id/reviews", deps.ReviewService.ListByCourse)
+	courses.Get("/:id/reviews/summary", deps.ReviewService.Summary)
+	courses.Post("/:id/reviews", deps.ReviewService.Create)
 	enrollments := api.Group("/enrollments",
 		middleware.RequireJSON,
 		middleware.RequireAuth(deps.JWT))
 	enrollments.Post("/swap", deps.CourseService.Swap)
-	courses.Get("/:id/reviews", deps.ReviewService.ListByCourse)
-	courses.Get("/:id/reviews/summary", deps.ReviewService.Summary)
-	courses.Post("/:id/reviews", deps.ReviewService.Create)
+
 	// --- ulasan kelas (MongoDB) ---
 	reviews := api.Group("/reviews",
 		middleware.RequireJSON,
@@ -75,17 +78,25 @@ func Register(app *fiber.App, deps Dependencies) {
 	reviews.Post("/:id/helpful", deps.ReviewService.MarkHelpful)
 
 	// --- statistik portofolio lintas mahasiswa ---
-	// Group terpisah, bukan /students/:id/... , karena endpoint ini
-	// menggabungkan SEMUA portofolio. Group terpisah juga membuat
-	// "stats" tidak pernah tertangkap oleh pola /students/:id.
 	portfolios := api.Group("/portfolios", middleware.RequireAuth(deps.JWT))
 	portfolios.Get("/stats/technologies", deps.PortfolioService.TechStats)
+
+	// --- notifikasi (diisi oleh worker, dibaca lewat API) ---
+	notifications := api.Group("/notifications",
+		middleware.RequireJSON,
+		middleware.RequireAuth(deps.JWT))
+	notifications.Get("/mine", deps.NotificationService.Mine)
+
+	admin := api.Group("/admin",
+		middleware.RequireJSON,
+		middleware.RequireAuth(deps.JWT))
+	admin.Get("/queue", middleware.RequirePermission(perms, "queue:monitor"),
+		deps.NotificationService.Monitor)
 
 }
 
 func healthCheck(pool *pgxpool.Pool, mongoClient *mongo.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		print("healthCheck called\n")
 		ctx, cancel := context.WithTimeout(c.UserContext(), 2*time.Second)
 		defer cancel()
 		if err := pool.Ping(ctx); err != nil {
@@ -99,14 +110,19 @@ func healthCheck(pool *pgxpool.Pool, mongoClient *mongo.Client) fiber.Handler {
 }
 
 type Dependencies struct {
-	Pool               *pgxpool.Pool
-	MongoClient        *mongo.Client
-	JWT                *helper.JWTManager
-	AuthService        *service.AuthService
-	Permissions        *helper.PermissionSet
-	StudentService     *service.StudentService
-	AchievementService *service.AchievementService
-	CourseService      *service.CourseService
-	ReviewService      *service.ReviewService
-	PortfolioService   *service.PortfolioService
+	Pool                *pgxpool.Pool
+	MongoClient         *mongo.Client
+	JWT                 *helper.JWTManager
+	Permissions         *helper.PermissionSet
+	StudentService      *service.StudentService
+	AuthService         *service.AuthService
+	CourseService       *service.CourseService
+	ReviewService       *service.ReviewService
+	NotificationService *service.NotificationService
+	AchievementService  *service.AchievementService
+	PortfolioService    *service.PortfolioService
+	// EnableSwagger menyalakan Swagger UI di /swagger. Di production
+	// sebaiknya dimatikan: dokumentasi lengkap adalah peta gratis bagi
+	// penyerang.
+	EnableSwagger bool
 }
