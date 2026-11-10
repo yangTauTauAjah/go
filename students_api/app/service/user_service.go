@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"students_api/app/model"
@@ -173,7 +172,6 @@ func (s *StudentService) Delete(c *fiber.Ctx) error {
 	if !ok {
 		return helper.Fail(c, fiber.StatusUnauthorized, "belum terautentikasi")
 	}
-	fmt.Println("Debug: current user ID:", current.UserID, "requested delete ID:", id)
 	if current.UserID == id {
 		return helper.Fail(c, fiber.StatusForbidden,
 			"tidak boleh menghapus akun sendiri")
