@@ -13,6 +13,17 @@ type Course struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+// MyCourses adalah isi field data pada GET /courses/mine.
+//
+// Sebelumnya response ini disusun dengan fiber.Map. Hasil JSON-nya sama
+// persis, tetapi map tidak memiliki nama dan bentuk yang dapat dibaca swag,
+// sehingga dokumentasi API tidak dapat menjelaskan isinya.
+type MyCourses struct {
+	Courses      []Course `json:"courses"`
+	TotalCredits int      `json:"total_credits"`
+	MaxCredits   int      `json:"max_credits"`
+}
+
 // SwapRequest dipakai endpoint pindah kelas: keluar dari satu kelas dan
 // masuk ke kelas lain sebagai SATU tindakan yang tidak dapat dipecah.
 type SwapRequest struct {
