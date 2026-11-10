@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS roles (
 INSERT INTO roles (name, description) VALUES
  ('admin', 'Akses penuh terhadap seluruh data dan pengaturan'),
  ('staff', 'Boleh melihat data seluruh user, tetapi tidak boleh mengubah'),
- ('student', 'Hanya boleh mengelola datanya sendiri')
+ ('student', 'Hanya boleh mengelola datanya sendiri'),
+ ('user', 'Hanya boleh mengelola datanya sendiri')
 ON CONFLICT (name) DO NOTHING;
 -- ---------------------------------------------------------------
 -- permissions — daftar tindakan yang dapat diberikan kepada role
