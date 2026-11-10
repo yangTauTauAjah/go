@@ -59,6 +59,8 @@ func (m *TxManager) runOnce(ctx context.Context, fn func(tx DBTX) error) error {
 	// melakukan apa-apa (pgx mengembalikan ErrTxClosed yang kita abaikan).
 	// Tanpa baris ini, setiap kegagalan meninggalkan transaction terbuka
 	// yang terus memegang satu koneksi dari pool — selamanya.
+
+	defer tx.Rollback(ctx)
 	if err := fn(tx); err != nil {
 		return err
 	}
@@ -70,4 +72,16 @@ func (m *TxManager) runOnce(ctx context.Context, fn func(tx DBTX) error) error {
 func isRetryable(err error) bool {
 	code := pgErrorCode(err)
 	return code == codeSerializationFailure || code == codeDeadlockDetected
+}
+
+// WithTxOnce sama dengan WithTx, tetapi TIDAK PERNAH melakukan retry.
+//
+// Dipakai ketika fn memang harus melakukan sesuatu di luar database —
+// mengirim email, melakukan enqueue task — sambil memegang lock
+// di database. Melakukan retry fn berarti mengulang tindakan luar itu.
+// Tanggung jawab melakukan retry dipindahkan ke pemanggil: worker queue
+// sudah punya mekanisme retry sendiri, dan relay outbox akan melakukan retry
+// pada putaran berikutnya.
+func (m *TxManager) WithTxOnce(ctx context.Context, fn func(tx DBTX) error) error {
+	return m.runOnce(ctx, fn)
 }

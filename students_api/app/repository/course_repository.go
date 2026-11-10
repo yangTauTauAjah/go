@@ -128,7 +128,7 @@ func (r *coursePostgresRepository) SetEnrolledCount(ctx context.Context, courseI
 func (r *coursePostgresRepository) LockStudent(ctx context.Context, userID int) error {
 	var id int
 	err := r.db.QueryRow(ctx,
-		"SELECT id FROM users WHERE id = $1", userID).Scan(&id)
+		"SELECT id FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
@@ -159,7 +159,7 @@ func (r *coursePostgresRepository) SumCredits(ctx context.Context, userID int) (
 func (r *coursePostgresRepository) IncrementEnrolled(ctx context.Context, courseID int) (model.Course, error) {
 	c, err := scanCourse(r.db.QueryRow(ctx,
 		`UPDATE courses SET enrolled_count = enrolled_count + 1
- WHERE id = $1 AND enrolled_count <= quota
+ WHERE id = $1 AND enrolled_count < quota
  RETURNING `+courseColumns, courseID))
 	if err == nil {
 		return c, nil
@@ -174,11 +174,12 @@ func (r *coursePostgresRepository) IncrementEnrolled(ctx context.Context, course
 	}
 	return model.Course{}, ErrCourseFull
 }
+
 func (r *coursePostgresRepository) DecrementEnrolled(ctx context.Context, courseID int) (model.Course, error) {
 	c, err := scanCourse(r.db.QueryRow(ctx,
 		`UPDATE courses SET enrolled_count = enrolled_count - 1
- WHERE id = $1
- RETURNING `+courseColumns, courseID))
+			WHERE id = $1
+			RETURNING `+courseColumns, courseID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return model.Course{}, ErrNotFound
@@ -194,10 +195,16 @@ func (r *coursePostgresRepository) DecrementEnrolled(ctx context.Context, course
 // sesudahnya akan mengurangi jumlah peserta untuk pendaftaran yang
 // sebenarnya tidak pernah ada.
 func (r *coursePostgresRepository) DeleteEnrollment(ctx context.Context, courseID, userID int) error {
-	_, err := r.db.Exec(ctx,
+	tag, err := r.db.Exec(ctx,
 		"DELETE FROM enrollments WHERE course_id = $1 AND user_id = $2", courseID, userID)
 	if err != nil {
 		return fmt.Errorf("menghapus pendaftaran: %w", err)
+	}
+	// Kalau tidak ada baris yang terhapus, mahasiswa memang tidak
+	// terdaftar di kelas itu. Caller perlu mengetahuinya supaya tidak
+	// mengurangi jumlah peserta untuk pendaftaran yang tidak pernah ada.
+	if tag.RowsAffected() == 0 {
+		return ErrNotEnrolled
 	}
 	return nil
 }
@@ -239,7 +246,7 @@ func (r *coursePostgresRepository) LockCourses(ctx context.Context, ids ...int) 
 // dalam WHERE, agar pemeriksaan dan perubahan terjadi dalam satu langkah.
 func (r *coursePostgresRepository) UpdateQuota(ctx context.Context, id, quota, version int) (model.Course, error) {
 	c, err := scanCourse(r.db.QueryRow(ctx,
-		`UPDATE courses SET quota = $1
+		`UPDATE courses SET quota = $1, version = version + 1
  WHERE id = $2 AND version = $3 AND $1 >= enrolled_count
  RETURNING `+courseColumns, quota, id, version))
 	if err == nil {
