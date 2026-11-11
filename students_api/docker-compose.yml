@@ -46,8 +46,12 @@ services:
       # di dalam container, agar tidak bentrok dengan "go run ." di port 3000. 
       - "8080:3000" 
     healthcheck: 
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/v1/health"] 
-      interval: 10s 
+      # Pakai 127.0.0.1, bukan localhost. Di dalam container Alpine,
+      # "localhost" lebih dulu dicocokkan ke IPv6 (::1), sedangkan aplikasi
+      # hanya mendengarkan di IPv4 (0.0.0.0:3000). Akibatnya wget gagal
+      # dengan "Connection refused" dan container api tidak pernah berstatus
+      # healthy, walaupun endpoint-nya sehat dari luar container.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/v1/health"]
       timeout: 3s 
       retries: 5 
       start_period: 10s 
