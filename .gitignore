@@ -2,3 +2,8 @@
 logs/
 /ignore
 .env.test
+
+# Artefak hasil pengujian coverage (dihasilkan oleh go test -coverprofile)
+coverage
+coverage.out
+coverage.html
