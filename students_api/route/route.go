@@ -15,8 +15,7 @@ import (
 
 func Register(app *fiber.App, deps Dependencies) {
 	if deps.EnableSwagger {
-		// Swagger UI: http://localhost:3000/swagger/index.html
-		app.Get("/swagger/*", swagger.HandlerDefault)
+		app.Get("/swagger/*", swagger.New(swagger.Config{Title: "API KRS Praktikum Backend Lanjut"}))
 	}
 
 	api := app.Group("/api/v1")
