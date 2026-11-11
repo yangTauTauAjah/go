@@ -13,6 +13,8 @@ func TestWithinCreditLimit(t *testing.T) {
 	}{
 		{name: "KRS masih kosong", taken: 0, adding: 3, want: true},
 		{name: "masih jauh dari batas", taken: 12, adding: 3, want: true},
+		{name: "tepat di batas 24 SKS", taken: 21, adding: 3, want: true},
+		{name: "tepat di batas tanpa tambahan", taken: 24, adding: 0, want: true},
 		{name: "melewati batas satu SKS", taken: 22, adding: 3, want: false},
 		{name: "KRS sudah penuh", taken: 24, adding: 1, want: false},
 	}

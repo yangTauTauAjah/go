@@ -2,8 +2,9 @@
 logs/
 /ignore
 .env.test
-
-# Artefak hasil pengujian coverage (dihasilkan oleh go test -coverprofile)
 coverage
 coverage.out
 coverage.html
+
+# Harness pengujian PowerShell (acceptance test) hanya alat bantu lokal
+students_api/scripts/acceptance/
