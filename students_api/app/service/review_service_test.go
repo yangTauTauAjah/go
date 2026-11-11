@@ -32,9 +32,6 @@ const (
 	studentB      = 8
 )
 
-// sharedReviews menampung ulasan selama test berjalan.
-var sharedReviews = newFakeReviewRepo()
-
 type testEnv struct {
 	app *fiber.App
 	jwt *helper.JWTManager
@@ -42,11 +39,15 @@ type testEnv struct {
 
 // newTestEnv menyusun aplikasi lengkap — middleware, route, dan error
 // handler yang SAMA dengan production — tetapi repository-nya diganti fake.
-// Setiap test memanggil fungsi ini sendiri sehingga mendapat fake yang baru.
+//
+// PENTING: fake dibuat BARU untuk setiap pemanggilan. Kalau satu fake
+// dipakai bersama seluruh test dalam package ini, urutan test (dan
+// -shuffle=on) menentukan apakah test lulus: test yang membuat ulasan
+// bisa membuat test lain gagal dengan 409 ALREADY_REVIEWED.
 func newTestEnv(t *testing.T) testEnv {
 	t.Helper()
 
-	reviews := sharedReviews
+	reviews := newFakeReviewRepo()
 	courses := &fakeCourseRepo{
 		courses: map[int]model.Course{
 			courseBackend: {ID: courseBackend, Code: "IF101", Name: "Pemrograman Backend Lanjut"},

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,8 +55,14 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// Cukup koneksi agar test konkurensi benar-benar berjalan serentak.
-	cfg.MaxConns = 1
+	// Pool harus punya cukup koneksi agar test konkurensi benar-benar
+	// berjalan SERENTAK. Dengan MaxConns = 1, seluruh request antre di
+	// satu koneksi: request saling mendahului satu per satu, tidak pernah
+	// bertabrakan, dan bug konkurensi (mis. tanpa FOR UPDATE) tidak
+	// pernah bisa terlihat. Production memakai DB_MAX_CONNS (bawaan 10),
+	// dan test memakai 10 request serentak, jadi pool test diberi 20.
+	cfg.MaxConns = 20
+	cfg.MinConns = 2
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -74,9 +81,42 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	// Pemanasan pool: seluruh koneksi dibuka SEBELUM test apa pun jalan.
+	//
+	// Tanpa ini, repetisi pertama memakai pool yang baru dingin: sebagian
+	// besar request harus menunggu koneksi dibuat, sehingga request tidak
+	// benar-benar berangkat serentak dan bug konkurensi lolos pada
+	// repetisi pertama saja. Setelah dipanaskan, semua repetisi punya
+	// kondisi yang sama.
+	warmUpPool(ctx, int(cfg.MaxConns))
+
 	code := m.Run()
 	pool.Close()
 	os.Exit(code)
+}
+
+// warmUpPool membuka sebanyak mungkin koneksi sekaligus lalu mengembalikannya
+// ke pool, sehingga seluruh koneksi sudah ada dan siap dipinjam ketika test
+// konkurensi mulai.
+func warmUpPool(ctx context.Context, want int) {
+	acquired := make(chan *pgxpool.Conn, want)
+	var wg sync.WaitGroup
+	for i := 0; i < want; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, err := pool.Acquire(ctx)
+			if err != nil {
+				return
+			}
+			acquired <- c
+		}()
+	}
+	wg.Wait()
+	close(acquired)
+	for c := range acquired {
+		c.Release()
+	}
 }
 
 // applyMigrations menjalankan seluruh file migrations/*.sql berurutan.
@@ -139,6 +179,12 @@ id`,
 }
 
 // seedCourse membuat satu kelas khusus untuk test yang memanggilnya.
+//
+// Pembersihan memakai t.Cleanup, BUKAN defer. defer di dalam fungsi ini
+// akan berjalan begitu seedCourse selesai mengembalikan nilai — yaitu
+// kelas dihapus SEBELUM test memakainya. Akibatnya setiap query yang
+// menyentuh kelas itu gagal dengan "data tidak ditemukan".
+// t.Cleanup menunda penghapusan sampai test benar-benar selesai.
 func seedCourse(t *testing.T, credits, quota int) model.Course {
 	t.Helper()
 	ctx := context.Background()
@@ -151,8 +197,8 @@ func seedCourse(t *testing.T, credits, quota int) model.Course {
 		t.Fatalf("seed kelas: %v", err)
 	}
 
-	defer func() {
+	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM courses WHERE id = $1`, c.ID)
-	}()
+	})
 	return c
 }
